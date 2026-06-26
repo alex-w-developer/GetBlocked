@@ -1,0 +1,223 @@
+{
+  "name": "GetBlocked curated tracker category test set",
+  "description": "Local fixture for comparing the generated built-in ruleset against known tracker request examples by category.",
+  "pages": [
+    {
+      "name": "Analytics fixture",
+      "topUrl": "https://analytics-fixture.example.test/article",
+      "requests": [
+        {
+          "url": "https://www.google-analytics.com/analytics.js",
+          "type": "script",
+          "tracker": true,
+          "category": "Analytics"
+        },
+        {
+          "url": "https://cdn.heap.io/js/heap-123.js",
+          "type": "script",
+          "tracker": true,
+          "category": "Analytics"
+        },
+        {
+          "url": "https://app.posthog.com/static/array.js",
+          "type": "script",
+          "tracker": true,
+          "category": "Analytics"
+        },
+        {
+          "url": "https://cdn.segment.com/analytics.js/v1/demo/analytics.min.js",
+          "type": "script",
+          "tracker": true,
+          "category": "Analytics"
+        },
+        {
+          "url": "https://static.analytics-fixture.example.test/app.js",
+          "type": "script",
+          "tracker": false
+        }
+      ]
+    },
+    {
+      "name": "Ad and retargeting fixture",
+      "topUrl": "https://shop.example.test/product",
+      "requests": [
+        {
+          "url": "https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js",
+          "type": "script",
+          "tracker": true,
+          "category": "Ad tracking"
+        },
+        {
+          "url": "https://securepubads.g.doubleclick.net/tag/js/gpt.js",
+          "type": "script",
+          "tracker": true,
+          "category": "Ad tracking"
+        },
+        {
+          "url": "https://fastlane.rubiconproject.com/a/api/fastlane.json",
+          "type": "xmlhttprequest",
+          "tracker": true,
+          "category": "Ad tracking"
+        },
+        {
+          "url": "https://ib.adnxs.com/seg",
+          "type": "image",
+          "tracker": true,
+          "category": "Ad tracking"
+        },
+        {
+          "url": "https://shop.example.test/styles.css",
+          "type": "stylesheet",
+          "tracker": false
+        }
+      ]
+    },
+    {
+      "name": "Social pixel fixture",
+      "topUrl": "https://publisher.example.test/post",
+      "requests": [
+        {
+          "url": "https://connect.facebook.net/en_US/fbevents.js",
+          "type": "script",
+          "tracker": true,
+          "category": "Social pixel"
+        },
+        {
+          "url": "https://analytics.tiktok.com/i18n/pixel/events.js",
+          "type": "script",
+          "tracker": true,
+          "category": "Social pixel"
+        },
+        {
+          "url": "https://tr.snapchat.com/p",
+          "type": "image",
+          "tracker": true,
+          "category": "Social pixel"
+        },
+        {
+          "url": "https://px.ads.linkedin.com/collect",
+          "type": "image",
+          "tracker": true,
+          "category": "Social pixel"
+        },
+        {
+          "url": "https://publisher.example.test/logo.svg",
+          "type": "image",
+          "tracker": false
+        }
+      ]
+    },
+    {
+      "name": "Session replay fixture",
+      "topUrl": "https://docs.example.test/page",
+      "requests": [
+        {
+          "url": "https://static.hotjar.com/c/hotjar-123.js",
+          "type": "script",
+          "tracker": true,
+          "category": "Session replay"
+        },
+        {
+          "url": "https://mouseflow.com/projects/demo.js",
+          "type": "script",
+          "tracker": true,
+          "category": "Session replay"
+        },
+        {
+          "url": "https://cdn.contentsquare.net/uxa/demo.js",
+          "type": "script",
+          "tracker": true,
+          "category": "Session replay"
+        },
+        {
+          "url": "https://script.crazyegg.com/pages/scripts/demo.js",
+          "type": "script",
+          "tracker": true,
+          "category": "Session replay"
+        },
+        {
+          "url": "https://docs.example.test/article.css",
+          "type": "stylesheet",
+          "tracker": false
+        }
+      ]
+    },
+    {
+      "name": "Affiliate attribution fixture",
+      "topUrl": "https://review.example.test/best-products",
+      "requests": [
+        {
+          "url": "https://impactradius-event.com/event",
+          "type": "image",
+          "tracker": true,
+          "category": "Affiliate / attribution"
+        },
+        {
+          "url": "https://www.awin1.com/sread.img",
+          "type": "image",
+          "tracker": true,
+          "category": "Affiliate / attribution"
+        },
+        {
+          "url": "https://s.skimresources.com/js/demo.skimlinks.js",
+          "type": "script",
+          "tracker": true,
+          "category": "Affiliate / attribution"
+        },
+        {
+          "url": "https://www.emjcd.com/tags/c/demo/tag.js",
+          "type": "script",
+          "tracker": true,
+          "category": "Affiliate / attribution"
+        },
+        {
+          "url": "https://review.example.test/review.js",
+          "type": "script",
+          "tracker": false
+        }
+      ]
+    },
+    {
+      "name": "Email marketing fixture",
+      "topUrl": "https://brand.example.test/landing",
+      "requests": [
+        {
+          "url": "https://brand.us1.list-manage.com/track/open.php",
+          "type": "image",
+          "tracker": true,
+          "category": "Email marketing"
+        },
+        {
+          "url": "https://static.klaviyo.com/onsite/js/klaviyo.js",
+          "type": "script",
+          "tracker": true,
+          "category": "Email marketing"
+        },
+        {
+          "url": "https://js.hs-analytics.net/analytics/demo.js",
+          "type": "script",
+          "tracker": true,
+          "category": "Email marketing"
+        },
+        {
+          "url": "https://track.customer.io/events",
+          "type": "xmlhttprequest",
+          "tracker": true,
+          "category": "Email marketing"
+        },
+        {
+          "url": "https://brand.example.test/hero.jpg",
+          "type": "image",
+          "tracker": false
+        }
+      ]
+    }
+  ],
+  "landingUrls": [
+    "https://news.example.test/article?utm_source=newsletter&utm_medium=email&utm_campaign=launch&fbclid=abc",
+    "https://shop.example.test/product?gclid=123&affiliate_id=partner42&color=green",
+    "https://blog.example.test/post?mc_cid=aaa&mc_eid=bbb&ref=social",
+    "https://mag.example.test/story?igshid=xyz&utm_content=hero&utm_term=privacy",
+    "https://brand.example.test/landing?dclid=display123&utm_term=privacy&utm_campaign=spring"
+  ]
+}

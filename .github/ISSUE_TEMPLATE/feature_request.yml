@@ -1,0 +1,37 @@
+name: Feature request
+description: Suggest a local-only, privacy-safe feature.
+title: "[Feature] "
+labels: ["enhancement", "PR welcome"]
+body:
+  - type: textarea
+    id: summary
+    attributes:
+      label: Feature summary
+    validations:
+      required: true
+  - type: textarea
+    id: why
+    attributes:
+      label: Why it helps
+    validations:
+      required: true
+  - type: textarea
+    id: behavior
+    attributes:
+      label: Proposed behavior
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+  - type: dropdown
+    id: pr
+    attributes:
+      label: Will you open a PR?
+      options:
+        - "Yes"
+        - "Maybe"
+        - "No"
+    validations:
+      required: true

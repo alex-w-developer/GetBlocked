@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>GetBlocked!</title>
+    <link rel="stylesheet" href="popup.css">
+  </head>
+  <body>
+    <main class="popup-shell">
+      <header class="hero">
+        <div class="brand-mark" aria-hidden="true">
+          <span class="shield"><span class="shield-letter">G</span></span>
+        </div>
+        <div class="hero-copy">
+          <p class="eyebrow">GetBlocked!</p>
+          <h1>Privacy report</h1>
+          <p class="subtitle">Cleaner pages. Fewer trackers. Local-only.</p>
+        </div>
+      </header>
+
+      <section class="stats" aria-label="Tracker statistics">
+        <div class="stat">
+          <span class="stat-label">Blocked on this page</span>
+          <strong id="page-blocked">0</strong>
+        </div>
+        <div class="stat">
+          <span class="stat-label">Tracking links cleaned</span>
+          <strong id="tracking-links-cleaned">0</strong>
+        </div>
+        <div class="stat">
+          <span class="stat-label">Visible tracking attempts detected</span>
+          <strong id="visible-attempts">0</strong>
+        </div>
+      </section>
+
+      <section class="categories" aria-label="Detected tracking categories">
+        <h2>Detected categories</h2>
+        <ul id="detected-categories">
+          <li>No categories detected on this page</li>
+        </ul>
+      </section>
+
+      <footer class="footer">
+        <span class="status-dot" aria-hidden="true"></span>
+        <p id="status-line">No browsing data leaves your device.</p>
+      </footer>
+    </main>
+    <script src="popup.js"></script>
+  </body>
+</html>

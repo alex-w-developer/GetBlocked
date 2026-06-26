@@ -1,0 +1,70 @@
+name: Tracker request
+description: Suggest a tracker domain for the catalog. PRs are preferred.
+title: "[Tracker] "
+labels: ["tracker-domain", "PR welcome"]
+body:
+  - type: markdown
+    attributes:
+      value: "PRs are preferred. If you know the tracker domain and category, feel free to open a PR directly."
+  - type: input
+    id: domain
+    attributes:
+      label: Tracker domain
+      description: Use the narrow tracker domain, not a broad platform domain.
+      placeholder: tracker.example.com
+    validations:
+      required: true
+  - type: dropdown
+    id: category
+    attributes:
+      label: Category
+      options:
+        - Analytics
+        - Ad tracking
+        - Social pixel
+        - Session replay
+        - Affiliate / attribution
+        - Email marketing
+    validations:
+      required: true
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Evidence/source
+      description: Where did you see this domain used for tracking?
+    validations:
+      required: true
+  - type: textarea
+    id: why
+    attributes:
+      label: Why it should be blocked
+    validations:
+      required: true
+  - type: textarea
+    id: risk
+    attributes:
+      label: Risk of breakage
+      description: Could this affect login, payments, captcha, media, or core site behavior?
+    validations:
+      required: true
+  - type: dropdown
+    id: pr
+    attributes:
+      label: Will you open a PR?
+      options:
+        - "Yes"
+        - "Maybe"
+        - "No"
+    validations:
+      required: true
+  - type: checkboxes
+    id: checklist
+    attributes:
+      label: Checklist
+      options:
+        - label: This is not a broad/high-breakage domain.
+          required: true
+        - label: This is not a payment processor, login provider, captcha service, core CDN, or broad platform domain.
+          required: true
+        - label: I understand that one domain plus one test fixture is enough for a good first PR.
+          required: true

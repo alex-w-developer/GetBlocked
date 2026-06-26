@@ -1,0 +1,486 @@
+{
+  "version": 1,
+  "description": "Curated starter catalog of common third-party tracker domains for GetBlocked!.",
+  "trackers": [
+    {
+      "domain": "amplitude.com",
+      "category": "Analytics",
+      "label": "Amplitude",
+      "notes": "Product analytics"
+    },
+    {
+      "domain": "api.segment.io",
+      "category": "Analytics",
+      "label": "Segment API",
+      "notes": "Customer data and analytics collection"
+    },
+    {
+      "domain": "cdn.segment.com",
+      "category": "Analytics",
+      "label": "Segment CDN",
+      "notes": "Segment analytics library"
+    },
+    {
+      "domain": "google-analytics.com",
+      "category": "Analytics",
+      "label": "Google Analytics",
+      "notes": "Analytics collection"
+    },
+    {
+      "domain": "googletagmanager.com",
+      "category": "Analytics",
+      "label": "Google Tag Manager",
+      "notes": "Tag manager often used to load tracking scripts"
+    },
+    {
+      "domain": "heap.io",
+      "category": "Analytics",
+      "label": "Heap",
+      "notes": "Product analytics"
+    },
+    {
+      "domain": "heapanalytics.com",
+      "category": "Analytics",
+      "label": "Heap Analytics",
+      "notes": "Product analytics"
+    },
+    {
+      "domain": "logrocket.com",
+      "category": "Analytics",
+      "label": "LogRocket",
+      "notes": "Product analytics and session diagnostics"
+    },
+    {
+      "domain": "matomo.cloud",
+      "category": "Analytics",
+      "label": "Matomo Cloud",
+      "notes": "Analytics collection"
+    },
+    {
+      "domain": "mixpanel.com",
+      "category": "Analytics",
+      "label": "Mixpanel",
+      "notes": "Product analytics"
+    },
+    {
+      "domain": "posthog.com",
+      "category": "Analytics",
+      "label": "PostHog",
+      "notes": "Product analytics"
+    },
+    {
+      "domain": "rudderlabs.com",
+      "category": "Analytics",
+      "label": "RudderStack",
+      "notes": "Customer data and analytics collection"
+    },
+    {
+      "domain": "segment.com",
+      "category": "Analytics",
+      "label": "Segment",
+      "notes": "Customer data and analytics collection"
+    },
+    {
+      "domain": "ssl.google-analytics.com",
+      "category": "Analytics",
+      "label": "Google Analytics SSL",
+      "notes": "Analytics collection endpoint"
+    },
+    {
+      "domain": "stats.g.doubleclick.net",
+      "category": "Analytics",
+      "label": "Google Analytics DoubleClick",
+      "notes": "Google Analytics advertising/measurement endpoint"
+    },
+    {
+      "domain": "www.google-analytics.com",
+      "category": "Analytics",
+      "label": "Google Analytics WWW",
+      "notes": "Analytics script and collection endpoint"
+    },
+    {
+      "domain": "adnxs.com",
+      "category": "Ad tracking",
+      "label": "AppNexus",
+      "notes": "Ad exchange and retargeting"
+    },
+    {
+      "domain": "adroll.com",
+      "category": "Ad tracking",
+      "label": "AdRoll",
+      "notes": "Ad retargeting"
+    },
+    {
+      "domain": "adsrvr.org",
+      "category": "Ad tracking",
+      "label": "The Trade Desk",
+      "notes": "Ad tracking and retargeting"
+    },
+    {
+      "domain": "ads-twitter.com",
+      "category": "Ad tracking",
+      "label": "Twitter Ads",
+      "notes": "Ad tracking pixel"
+    },
+    {
+      "domain": "bat.bing.com",
+      "category": "Ad tracking",
+      "label": "Microsoft Advertising",
+      "notes": "Ad conversion tracking"
+    },
+    {
+      "domain": "bidswitch.net",
+      "category": "Ad tracking",
+      "label": "BidSwitch",
+      "notes": "Ad exchange"
+    },
+    {
+      "domain": "casalemedia.com",
+      "category": "Ad tracking",
+      "label": "Index Exchange",
+      "notes": "Ad exchange"
+    },
+    {
+      "domain": "criteo.com",
+      "category": "Ad tracking",
+      "label": "Criteo",
+      "notes": "Ad retargeting"
+    },
+    {
+      "domain": "doubleclick.net",
+      "category": "Ad tracking",
+      "label": "DoubleClick",
+      "notes": "Ad serving and measurement"
+    },
+    {
+      "domain": "googleadservices.com",
+      "category": "Ad tracking",
+      "label": "Google Ad Services",
+      "notes": "Ad conversion tracking"
+    },
+    {
+      "domain": "googleads.g.doubleclick.net",
+      "category": "Ad tracking",
+      "label": "Google Ads DoubleClick",
+      "notes": "Ad serving and tracking"
+    },
+    {
+      "domain": "googlesyndication.com",
+      "category": "Ad tracking",
+      "label": "Google Syndication",
+      "notes": "Ad serving"
+    },
+    {
+      "domain": "googletagservices.com",
+      "category": "Ad tracking",
+      "label": "Google Publisher Tags",
+      "notes": "Ad tag services"
+    },
+    {
+      "domain": "media.net",
+      "category": "Ad tracking",
+      "label": "Media.net",
+      "notes": "Ad serving and tracking"
+    },
+    {
+      "domain": "openx.net",
+      "category": "Ad tracking",
+      "label": "OpenX",
+      "notes": "Ad exchange"
+    },
+    {
+      "domain": "outbrain.com",
+      "category": "Ad tracking",
+      "label": "Outbrain",
+      "notes": "Recommendation advertising"
+    },
+    {
+      "domain": "pagead2.googlesyndication.com",
+      "category": "Ad tracking",
+      "label": "Google Pagead",
+      "notes": "Ad serving"
+    },
+    {
+      "domain": "pubmatic.com",
+      "category": "Ad tracking",
+      "label": "PubMatic",
+      "notes": "Ad exchange"
+    },
+    {
+      "domain": "quantserve.com",
+      "category": "Ad tracking",
+      "label": "Quantcast",
+      "notes": "Audience measurement"
+    },
+    {
+      "domain": "rubiconproject.com",
+      "category": "Ad tracking",
+      "label": "Rubicon Project",
+      "notes": "Ad exchange"
+    },
+    {
+      "domain": "scorecardresearch.com",
+      "category": "Ad tracking",
+      "label": "ScorecardResearch",
+      "notes": "Audience measurement"
+    },
+    {
+      "domain": "securepubads.g.doubleclick.net",
+      "category": "Ad tracking",
+      "label": "Google Publisher Ads",
+      "notes": "Ad serving"
+    },
+    {
+      "domain": "sharethrough.com",
+      "category": "Ad tracking",
+      "label": "Sharethrough",
+      "notes": "Ad exchange"
+    },
+    {
+      "domain": "taboola.com",
+      "category": "Ad tracking",
+      "label": "Taboola",
+      "notes": "Recommendation advertising"
+    },
+    {
+      "domain": "teads.tv",
+      "category": "Ad tracking",
+      "label": "Teads",
+      "notes": "Video advertising"
+    },
+    {
+      "domain": "ads.linkedin.com",
+      "category": "Social pixel",
+      "label": "LinkedIn Ads",
+      "notes": "Social advertising pixel"
+    },
+    {
+      "domain": "ads.tiktok.com",
+      "category": "Social pixel",
+      "label": "TikTok Ads",
+      "notes": "Social advertising pixel"
+    },
+    {
+      "domain": "analytics.pinterest.com",
+      "category": "Social pixel",
+      "label": "Pinterest Analytics",
+      "notes": "Social analytics pixel"
+    },
+    {
+      "domain": "analytics.tiktok.com",
+      "category": "Social pixel",
+      "label": "TikTok Analytics",
+      "notes": "Social analytics pixel"
+    },
+    {
+      "domain": "analytics.twitter.com",
+      "category": "Social pixel",
+      "label": "Twitter Analytics",
+      "notes": "Social analytics pixel"
+    },
+    {
+      "domain": "connect.facebook.net",
+      "category": "Social pixel",
+      "label": "Facebook Pixel",
+      "notes": "Social advertising pixel"
+    },
+    {
+      "domain": "ct.pinterest.com",
+      "category": "Social pixel",
+      "label": "Pinterest Conversion Tag",
+      "notes": "Social conversion pixel"
+    },
+    {
+      "domain": "facebook.net",
+      "category": "Social pixel",
+      "label": "Facebook",
+      "notes": "Social advertising and measurement"
+    },
+    {
+      "domain": "px.ads.linkedin.com",
+      "category": "Social pixel",
+      "label": "LinkedIn Insight",
+      "notes": "Social conversion pixel"
+    },
+    {
+      "domain": "sc-static.net",
+      "category": "Social pixel",
+      "label": "Snapchat Static",
+      "notes": "Social advertising script"
+    },
+    {
+      "domain": "snap.licdn.com",
+      "category": "Social pixel",
+      "label": "LinkedIn Insight Tag",
+      "notes": "Social analytics pixel"
+    },
+    {
+      "domain": "static.ads-twitter.com",
+      "category": "Social pixel",
+      "label": "Twitter Ads Static",
+      "notes": "Social advertising script"
+    },
+    {
+      "domain": "tr.snapchat.com",
+      "category": "Social pixel",
+      "label": "Snapchat Pixel",
+      "notes": "Social conversion pixel"
+    },
+    {
+      "domain": "clarity.ms",
+      "category": "Session replay",
+      "label": "Microsoft Clarity",
+      "notes": "Session replay and heatmaps"
+    },
+    {
+      "domain": "contentsquare.net",
+      "category": "Session replay",
+      "label": "Contentsquare",
+      "notes": "Session replay and heatmaps"
+    },
+    {
+      "domain": "crazyegg.com",
+      "category": "Session replay",
+      "label": "Crazy Egg",
+      "notes": "Heatmaps and behavior analytics"
+    },
+    {
+      "domain": "decibelinsight.net",
+      "category": "Session replay",
+      "label": "Decibel Insight",
+      "notes": "Session replay and behavior analytics"
+    },
+    {
+      "domain": "fullstory.com",
+      "category": "Session replay",
+      "label": "FullStory",
+      "notes": "Session replay"
+    },
+    {
+      "domain": "hotjar.com",
+      "category": "Session replay",
+      "label": "Hotjar",
+      "notes": "Session replay and heatmaps"
+    },
+    {
+      "domain": "hotjar.io",
+      "category": "Session replay",
+      "label": "Hotjar IO",
+      "notes": "Session replay and heatmaps"
+    },
+    {
+      "domain": "inspectlet.com",
+      "category": "Session replay",
+      "label": "Inspectlet",
+      "notes": "Session replay and heatmaps"
+    },
+    {
+      "domain": "luckyorange.com",
+      "category": "Session replay",
+      "label": "Lucky Orange",
+      "notes": "Session replay and heatmaps"
+    },
+    {
+      "domain": "mouseflow.com",
+      "category": "Session replay",
+      "label": "Mouseflow",
+      "notes": "Session replay and heatmaps"
+    },
+    {
+      "domain": "script.hotjar.com",
+      "category": "Session replay",
+      "label": "Hotjar Script",
+      "notes": "Session replay script"
+    },
+    {
+      "domain": "smartlook.com",
+      "category": "Session replay",
+      "label": "Smartlook",
+      "notes": "Session replay"
+    },
+    {
+      "domain": "static.hotjar.com",
+      "category": "Session replay",
+      "label": "Hotjar Static",
+      "notes": "Session replay script"
+    },
+    {
+      "domain": "awin1.com",
+      "category": "Affiliate / attribution",
+      "label": "Awin",
+      "notes": "Affiliate attribution"
+    },
+    {
+      "domain": "cj.com",
+      "category": "Affiliate / attribution",
+      "label": "CJ Affiliate",
+      "notes": "Affiliate attribution"
+    },
+    {
+      "domain": "emjcd.com",
+      "category": "Affiliate / attribution",
+      "label": "CJ Tracking",
+      "notes": "Affiliate attribution"
+    },
+    {
+      "domain": "impactradius-event.com",
+      "category": "Affiliate / attribution",
+      "label": "Impact Event",
+      "notes": "Affiliate attribution event endpoint"
+    },
+    {
+      "domain": "impactradius.com",
+      "category": "Affiliate / attribution",
+      "label": "Impact",
+      "notes": "Affiliate attribution"
+    },
+    {
+      "domain": "partnerize.com",
+      "category": "Affiliate / attribution",
+      "label": "Partnerize",
+      "notes": "Affiliate attribution"
+    },
+    {
+      "domain": "skimresources.com",
+      "category": "Affiliate / attribution",
+      "label": "Skimlinks",
+      "notes": "Affiliate link attribution"
+    },
+    {
+      "domain": "customer.io",
+      "category": "Email marketing",
+      "label": "Customer.io",
+      "notes": "Marketing automation"
+    },
+    {
+      "domain": "drip.com",
+      "category": "Email marketing",
+      "label": "Drip",
+      "notes": "Email marketing automation"
+    },
+    {
+      "domain": "hs-analytics.net",
+      "category": "Email marketing",
+      "label": "HubSpot Analytics",
+      "notes": "Marketing analytics"
+    },
+    {
+      "domain": "hs-banner.com",
+      "category": "Email marketing",
+      "label": "HubSpot Banner",
+      "notes": "Marketing banner and consent tooling"
+    },
+    {
+      "domain": "klaviyo.com",
+      "category": "Email marketing",
+      "label": "Klaviyo",
+      "notes": "Email marketing automation"
+    },
+    {
+      "domain": "list-manage.com",
+      "category": "Email marketing",
+      "label": "Mailchimp Lists",
+      "notes": "Email marketing tracking"
+    }
+  ]
+}

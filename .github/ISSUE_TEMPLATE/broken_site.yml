@@ -1,0 +1,62 @@
+name: Broken website report
+description: Report a site that may break when GetBlocked! is enabled.
+title: "[Broken site] "
+labels: ["broken-site", "needs reproduction"]
+body:
+  - type: input
+    id: url
+    attributes:
+      label: Site URL
+      description: Share the public site URL or domain. Avoid private account pages.
+      placeholder: https://example.com
+    validations:
+      required: true
+  - type: textarea
+    id: broke
+    attributes:
+      label: What broke?
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      placeholder: "1. Open...\n2. Click...\n3. See..."
+    validations:
+      required: true
+  - type: dropdown
+    id: disabled
+    attributes:
+      label: Does disabling GetBlocked! fix it?
+      options:
+        - "Yes"
+        - "No"
+        - "Not sure"
+    validations:
+      required: true
+  - type: textarea
+    id: media
+    attributes:
+      label: Screenshot/video
+      description: Optional, but helpful. Avoid private information.
+  - type: dropdown
+    id: category
+    attributes:
+      label: Suspected tracker category
+      options:
+        - Not sure
+        - Analytics
+        - Ad tracking
+        - Social pixel
+        - Session replay
+        - Affiliate / attribution
+        - Email marketing
+        - URL tracking parameters
+  - type: dropdown
+    id: help
+    attributes:
+      label: Will you help test a fix?
+      options:
+        - "Yes"
+        - "Maybe"
+        - "No"

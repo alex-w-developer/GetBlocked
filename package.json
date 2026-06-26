@@ -1,0 +1,10 @@
+{
+  "name": "getblocked",
+  "version": "0.1.0",
+  "private": true,
+  "description": "GetBlocked! is a free browser extension that reduces common third-party website trackers.",
+  "scripts": {
+    "generate:rules": "node scripts/generate-rules.mjs",
+    "test:evidence": "node scripts/evaluate-test-set.mjs"
+  }
+}
