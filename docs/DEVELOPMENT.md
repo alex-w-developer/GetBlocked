@@ -108,3 +108,15 @@ Check `manifest.json`. Current production permissions are:
 - `webNavigation`
 
 Host permissions are limited to web pages so the extension can apply DNR rules and run the content script.
+
+## Troubleshooting Extension Context Invalidation
+
+When an unpacked extension is reloaded from `chrome://extensions`, content scripts that were injected into already-open tabs belong to the old extension context. Chrome can retain an `Extension context invalidated` entry in the extension Errors panel even after the source file has been fixed or updated.
+
+After reloading GetBlocked! during development:
+
+1. Clear existing entries in the extension Errors panel.
+2. Refresh tabs that were open before the extension reload.
+3. Reproduce the behavior and check whether a new error is created.
+
+The GetBlocked! content script guards runtime messaging and stops its scanner when it detects an invalidated context. Previously recorded errors do not disappear automatically and may display the current source file beside an older saved line number.
