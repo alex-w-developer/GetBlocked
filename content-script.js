@@ -5,28 +5,6 @@
   const trackerDomainSet = new Set(TRACKER_DOMAINS);
   const TRACKABLE_SELECTOR =
     "a[href],area[href],form[action],img[src],iframe[src],script[src],link[href]";
-  const SCAN_DEBOUNCE_MS = 600;
-  let scanTimer = 0;
-  let observer = null;
-  let contextActive = true;
-
-  function stopScanning() {
-    contextActive = false;
-
-    try {
-      window.clearTimeout(scanTimer);
-    } catch (error) {
-      // The page's old extension world may already be unavailable.
-    }
-
-    try {
-      observer?.disconnect();
-    } catch (error) {
-      // The observer belongs to the invalidated extension world.
-    }
-
-    observer = null;
-  }
 
   function hasValidExtensionContext() {
     try {
@@ -39,7 +17,6 @@
   function sendPageSignals(payload) {
     try {
       if (!hasValidExtensionContext()) {
-        stopScanning();
         return;
       }
 
@@ -48,9 +25,9 @@
           type: "GETBLOCKED_PAGE_SIGNALS",
           payload
         })
-        .catch(stopScanning);
+        .catch(() => {});
     } catch (error) {
-      stopScanning();
+      // Reloading an unpacked extension invalidates scripts in existing tabs.
     }
   }
 
@@ -144,8 +121,7 @@
   }
 
   function scanPage() {
-    if (!contextActive || !hasValidExtensionContext()) {
-      stopScanning();
+    if (!hasValidExtensionContext()) {
       return;
     }
 
@@ -203,35 +179,10 @@
         detectedCategories: Array.from(detectedCategories)
       });
     } catch (error) {
-      stopScanning();
+      // A context invalidated during the scan should stop quietly.
     }
   }
 
-  function scheduleScan() {
-    try {
-      if (!contextActive || !hasValidExtensionContext()) {
-        stopScanning();
-        return;
-      }
-
-      window.clearTimeout(scanTimer);
-      scanTimer = window.setTimeout(scanPage, SCAN_DEBOUNCE_MS);
-    } catch (error) {
-      stopScanning();
-    }
-  }
-
+  // A one-shot document-idle scan avoids stale observers after extension reloads.
   scanPage();
-
-  if (contextActive) {
-    observer = new MutationObserver(() => {
-      scheduleScan();
-    });
-    observer.observe(document.documentElement, {
-      childList: true,
-      subtree: true,
-      attributes: true,
-      attributeFilter: ["href", "src", "action", "style", "class"]
-    });
-  }
 })();

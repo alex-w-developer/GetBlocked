@@ -364,14 +364,6 @@ chrome.webNavigation.onCommitted.addListener((details) => {
   });
 });
 
-chrome.webNavigation.onHistoryStateUpdated.addListener((details) => {
-  if (details.frameId !== 0) {
-    return;
-  }
-
-  queueUpdate(() => resetTabStats(details.tabId));
-});
-
 chrome.tabs.onRemoved.addListener((tabId) => {
   queueUpdate(() => removeTabLocalData(tabId));
 });

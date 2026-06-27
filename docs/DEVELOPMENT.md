@@ -72,7 +72,7 @@ It does not show a privacy score.
 - Images, iframes, scripts, and related elements pointing at known tracker domains.
 - Visible tracking-looking elements.
 
-The scan runs locally in the browser and sends category/count signals to the background service worker.
+The scan runs once at `document_idle`, stays local in the browser, and sends category/count signals to the background service worker. It intentionally avoids a long-lived DOM observer so reloading an unpacked extension does not leave stale callbacks in already-open tabs.
 
 ## MV3 And DNR Notes
 
