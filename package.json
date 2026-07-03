@@ -5,6 +5,11 @@
   "description": "GetBlocked! is a free browser extension that reduces common third-party website trackers.",
   "scripts": {
     "generate:rules": "node scripts/generate-rules.mjs",
-    "test:evidence": "node scripts/evaluate-test-set.mjs"
+    "test:evidence": "node scripts/evaluate-test-set.mjs",
+    "check": "npm run generate:rules && npm run test:evidence && npm run check:syntax && npm run check:json && npm run check:generated && npm run check:safety",
+    "check:syntax": "node --check background.js && node --check content-script.js && node --check popup/popup.js && node --check scripts/generate-rules.mjs && node --check scripts/evaluate-test-set.mjs && node --check scripts/check-json.mjs && node --check scripts/check-safety.mjs && node --check shared/config.js",
+    "check:json": "node scripts/check-json.mjs",
+    "check:generated": "git diff --exit-code -- rules/rules.json shared/config.js",
+    "check:safety": "node scripts/check-safety.mjs"
   }
 }

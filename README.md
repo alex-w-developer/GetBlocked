@@ -119,32 +119,25 @@ Do not edit generated rules/config by hand unless you also update the generator 
 
 ## Run Tests
 
-Regenerate rules:
+Run the same local validation layers that CI uses:
+
+```bash
+npm run check
+```
+
+This regenerates rules, runs the evidence fixture, checks JavaScript syntax,
+parses JSON data files, verifies generated files are in sync, and runs the
+privacy/safety guardrails.
+
+Useful individual checks:
 
 ```bash
 npm run generate:rules
-```
-
-Run the local ruleset evidence test:
-
-```bash
 npm run test:evidence
-```
-
-Useful syntax checks:
-
-```bash
-node --check background.js
-node --check content-script.js
-node --check popup/popup.js
-node --check scripts/generate-rules.mjs
-node --check scripts/evaluate-test-set.mjs
-```
-
-Useful JSON checks:
-
-```bash
-node -e "for (const f of ['manifest.json','rules/rules.json','shared/tracker-catalog.json','shared/tracking-params.json','test/tracker-test-set.json','package.json']) JSON.parse(require('fs').readFileSync(f,'utf8')); console.log('JSON OK')"
+npm run check:syntax
+npm run check:json
+npm run check:generated
+npm run check:safety
 ```
 
 ## Manual Browser Check
