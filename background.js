@@ -1,17 +1,27 @@
 importScripts("shared/config.js");
 
-const { TRACKING_PARAMS } = globalThis.GetBlockedConfig;
+const {
+  BLOCK_RULE_ID,
+  CLEAN_URL_RULE_ID,
+  TRACKING_PARAMS,
+  TRACKER_DOMAINS,
+  TRACKER_CATEGORIES
+} = globalThis.GetBlockedConfig;
 
 const TAB_STATS_KEY = "getblockedTabStats";
 const PENDING_NAVIGATION_KEY = "getblockedPendingNavigation";
 const OBSOLETE_TOTALS_KEY = "getblockedTotals";
+const DECOY_MODE_KEY = "getblockedDecoyMode";
+const DECOY_SESSION_PROFILE_KEY = "getblockedDecoySessionProfile";
 
 let updateQueue = Promise.resolve();
 
 function queueUpdate(task) {
-  updateQueue = updateQueue.then(task).catch((error) => {
+  const operation = updateQueue.then(task);
+  updateQueue = operation.catch((error) => {
     console.warn("GetBlocked update failed:", error);
   });
+  return operation;
 }
 
 function storageGet(keys) {
@@ -53,6 +63,36 @@ function storageRemove(keys) {
   });
 }
 
+function sessionStorageGet(keys) {
+  return new Promise((resolve, reject) => {
+    chrome.storage.session.get(keys, (result) => {
+      const error = chrome.runtime.lastError;
+      if (error) {
+        reject(error);
+        return;
+      }
+      resolve(result);
+    });
+  });
+}
+
+function sessionStorageSet(items) {
+  return new Promise((resolve, reject) => {
+    chrome.storage.session.set(items, () => {
+      const error = chrome.runtime.lastError;
+      if (error) {
+        reject(error);
+        return;
+      }
+      resolve();
+    });
+  });
+}
+
+function updateStaticRules(options) {
+  return chrome.declarativeNetRequest.updateStaticRules(options);
+}
+
 function getBadgeText(tabId) {
   return new Promise((resolve) => {
     if (!Number.isInteger(tabId) || tabId < 0) {
@@ -81,6 +121,7 @@ function setDnrActionBadgeEnabled() {
 function createEmptyTabStats() {
   return {
     blockedOnPage: 0,
+    decoyedRequests: 0,
     trackingLinksCleaned: 0,
     trackingParamsRemoved: 0,
     visibleAttempts: 0,
@@ -89,6 +130,104 @@ function createEmptyTabStats() {
     estimatedTrackerRequests: 0,
     detectedCategories: [],
     updatedAt: Date.now()
+  };
+}
+
+function isKnownTrackerHost(hostname) {
+  const normalizedHost = String(hostname || "").toLowerCase();
+  return TRACKER_DOMAINS.some((domain) => {
+    return normalizedHost === domain || normalizedHost.endsWith(`.${domain}`);
+  });
+}
+
+function getTrackerCategories(hostname) {
+  return Object.entries(TRACKER_CATEGORIES)
+    .filter(([, domains]) => {
+      return domains.some((domain) => {
+        return hostname === domain || hostname.endsWith(`.${domain}`);
+      });
+    })
+    .map(([category]) => category);
+}
+
+function createFakeSessionProfile() {
+  const firstNames = ["Alex", "Casey", "Jordan", "Morgan", "Riley", "Taylor"];
+  const lastNames = ["Avery", "Hayes", "Parker", "Reed", "Rowan", "Sage"];
+  const randomValues = crypto.getRandomValues(new Uint32Array(4));
+  const token = Array.from(randomValues, (value) => {
+    return value.toString(16).padStart(8, "0");
+  }).join("");
+  const firstName = firstNames[randomValues[0] % firstNames.length];
+  const lastName = lastNames[randomValues[1] % lastNames.length];
+  const username = `${firstName}.${lastName}.${token.slice(0, 6)}`.toLowerCase();
+  const phoneSuffix = String(randomValues[2] % 100).padStart(2, "0");
+
+  return Object.freeze({
+    anonymousId: `anon_${token}`,
+    clientId: `${randomValues[0]}.${randomValues[1]}`,
+    userId: `user_${token.slice(0, 20)}`,
+    deviceId: `device_${token.slice(8, 28)}`,
+    sessionId: `session_${token.slice(16)}`,
+    email: `${username}@example.invalid`,
+    firstName,
+    lastName,
+    fullName: `${firstName} ${lastName}`,
+    username,
+    phone: `+120255501${phoneSuffix}`
+  });
+}
+
+async function getDecoyMode() {
+  const result = await storageGet(DECOY_MODE_KEY);
+  return result[DECOY_MODE_KEY] === true;
+}
+
+async function ensureDecoySessionProfile() {
+  const result = await sessionStorageGet(DECOY_SESSION_PROFILE_KEY);
+  const existing = result[DECOY_SESSION_PROFILE_KEY];
+
+  if (existing && typeof existing === "object") {
+    return existing;
+  }
+
+  const profile = createFakeSessionProfile();
+  await sessionStorageSet({ [DECOY_SESSION_PROFILE_KEY]: profile });
+  return profile;
+}
+
+async function applyDecoyRuleState(enabled) {
+  await updateStaticRules({
+    rulesetId: "getblocked_static_rules",
+    disableRuleIds: enabled ? [BLOCK_RULE_ID] : [],
+    enableRuleIds: enabled
+      ? [CLEAN_URL_RULE_ID]
+      : [BLOCK_RULE_ID, CLEAN_URL_RULE_ID]
+  });
+}
+
+async function syncDecoyRuleStateFromStorage() {
+  await applyDecoyRuleState(await getDecoyMode());
+}
+
+async function setDecoyMode(enabled) {
+  await applyDecoyRuleState(enabled);
+  await storageSet({ [DECOY_MODE_KEY]: enabled });
+
+  if (enabled) {
+    await clearBlockedCounts();
+  }
+
+  return {
+    enabled,
+    profile: enabled ? await ensureDecoySessionProfile() : null
+  };
+}
+
+async function getDecoyConfiguration() {
+  const enabled = await getDecoyMode();
+  return {
+    enabled,
+    profile: enabled ? await ensureDecoySessionProfile() : null
   };
 }
 
@@ -128,6 +267,24 @@ async function setAllTabStats(tabStats) {
   await storageSet({
     [TAB_STATS_KEY]: tabStats
   });
+}
+
+async function clearBlockedCounts() {
+  const tabStats = await getAllTabStats();
+  const updatedAt = Date.now();
+  const nextStats = Object.fromEntries(
+    Object.entries(tabStats).map(([tabId, stats]) => {
+      return [
+        tabId,
+        normalizeTabStats({
+          ...stats,
+          blockedOnPage: 0,
+          updatedAt
+        })
+      ];
+    })
+  );
+  await setAllTabStats(nextStats);
 }
 
 async function getTabStats(tabId) {
@@ -282,18 +439,46 @@ async function updatePageSignals(tabId, signals) {
     detectedCategories
   };
 
-  await updateTabStats(tabId, () => safeSignals);
-  await syncBlockedEstimateForTab(tabId, safeSignals.estimatedTrackerRequests);
+  await updateTabStats(tabId, (current) => ({
+    ...safeSignals,
+    detectedCategories: Array.from(
+      new Set([...current.detectedCategories, ...safeSignals.detectedCategories])
+    )
+  }));
+  if (!(await getDecoyMode())) {
+    await syncBlockedEstimateForTab(tabId, safeSignals.estimatedTrackerRequests);
+  }
+}
+
+async function recordDecoyedRequest(tabId, hostname) {
+  const normalizedHost = String(hostname || "").toLowerCase();
+  if (!(await getDecoyMode()) || !isKnownTrackerHost(normalizedHost)) {
+    return;
+  }
+
+  await updateTabStats(tabId, (current) => ({
+    decoyedRequests: current.decoyedRequests + 1,
+    detectedCategories: Array.from(
+      new Set([
+        ...current.detectedCategories,
+        ...getTrackerCategories(normalizedHost)
+      ])
+    )
+  }));
 }
 
 async function getReport(tabId) {
   await updateQueue;
-  await syncDnrActionCountForTab(tabId);
+  const decoyMode = await getDecoyMode();
+  if (!decoyMode) {
+    await syncDnrActionCountForTab(tabId);
+  }
 
   const pageStats = await getTabStats(tabId);
 
   return {
     page: pageStats,
+    decoyMode,
     localOnly: true,
     counterMode: "production_estimate"
   };
@@ -308,6 +493,39 @@ function handleMessage(message, sender, sendResponse) {
 
     sendResponse({ ok: true });
     return false;
+  }
+
+  if (message?.type === "GETBLOCKED_DECOYED_REQUEST") {
+    queueUpdate(() => {
+      return recordDecoyedRequest(sender.tab?.id, message.hostname);
+    });
+    sendResponse({ ok: true });
+    return false;
+  }
+
+  if (message?.type === "GETBLOCKED_DECOY_CONFIG") {
+    getDecoyConfiguration()
+      .then((configuration) => sendResponse({ ok: true, configuration }))
+      .catch((error) => {
+        sendResponse({
+          ok: false,
+          error: error.message || "Unable to load Decoy Mode"
+        });
+      });
+    return true;
+  }
+
+  if (message?.type === "SET_GETBLOCKED_DECOY_MODE") {
+    const enabled = message.enabled === true;
+    queueUpdate(() => setDecoyMode(enabled))
+      .then((configuration) => sendResponse({ ok: true, configuration }))
+      .catch((error) => {
+        sendResponse({
+          ok: false,
+          error: error.message || "Unable to update Decoy Mode"
+        });
+      });
+    return true;
   }
 
   if (message?.type === "GETBLOCKED_REPORT") {
@@ -326,12 +544,18 @@ function handleMessage(message, sender, sendResponse) {
 }
 
 chrome.runtime.onInstalled.addListener(() => {
-  queueUpdate(clearTransientLocalData);
+  queueUpdate(async () => {
+    await clearTransientLocalData();
+    await syncDecoyRuleStateFromStorage();
+  });
   setDnrActionBadgeEnabled();
 });
 
 chrome.runtime.onStartup.addListener(() => {
-  queueUpdate(clearTransientLocalData);
+  queueUpdate(async () => {
+    await clearTransientLocalData();
+    await syncDecoyRuleStateFromStorage();
+  });
   setDnrActionBadgeEnabled();
 });
 

@@ -10,6 +10,7 @@ Please include:
 - What broke.
 - Browser and OS version.
 - Whether disabling GetBlocked! fixes it.
+- Whether Decoy Mode was off or on when the problem occurred.
 - Which tracker category might be responsible, if known.
 - Steps to reproduce.
 - Screenshots or video if useful.
@@ -47,6 +48,8 @@ Helpful checks:
 5. Note blocked domains near the broken feature (e.g., a form submission depends on a blocked analytics script).
 6. Check if the domain is in `shared/tracker-catalog.json` and note its category.
 
+If Decoy Mode was on, repeat once with it off. Normal mode can break a page by blocking a catalog domain; Decoy Mode can expose a different compatibility problem if a tracker library rejects a replaced identifier or unsupported request bodies pass through unchanged. Include both results, but never test with a real purchase or conversion merely to exercise Decoy Mode.
+
 If you are not sure which domain caused the breakage:
 
 1. Open `chrome://extensions` → GetBlocked! → **Service Worker**.
@@ -62,6 +65,7 @@ If you are not sure which domain caused the breakage:
 | Login redirect loop | SSO provider keeps redirecting back to login page | Reclassify domain as `Essential / login` or remove from catalog |
 | Image gallery broken | Product images or lightbox does not load | Remove or narrow the CDN-like domain |
 | Captcha fails | "Are you a human?" check never completes | Remove the captcha provider domain from the blocker catalog |
+| Analytics library errors only in Decoy Mode | Tracker rejects a replaced test identifier | Record the request format and narrow the supported field mapping without changing event or transaction fields |
 
 ## Possible Fixes
 
@@ -92,6 +96,8 @@ A good PR description:
 > **Manual testing**: Loaded `app.example.com` with the extension enabled before and after the change. Login works after the fix. No visible tracking regressions on the homepage.
 
 ## When Not To File A Broken-Site Report
+
+Seeing a known tracker request in DevTools while Decoy Mode is on is expected. The experimental mode allows catalog-matched requests through where normal mode blocks them; the popup counter only indicates requests whose supported fields were changed. Those requests can still expose IP and network metadata.
 
 You do not need to file a report if:
 

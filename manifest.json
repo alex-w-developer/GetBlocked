@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "GetBlocked!",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "minimum_chrome_version": "120",
   "description": "GetBlocked! is a free browser extension that reduces common third-party website trackers.",
   "action": {
@@ -30,6 +30,33 @@
     ]
   },
   "content_scripts": [
+    {
+      "matches": [
+        "http://*/*",
+        "https://*/*"
+      ],
+      "js": [
+        "shared/config.js",
+        "shared/decoy-transform.js",
+        "decoy-interceptor.js"
+      ],
+      "all_frames": true,
+      "match_about_blank": true,
+      "run_at": "document_start",
+      "world": "MAIN"
+    },
+    {
+      "matches": [
+        "http://*/*",
+        "https://*/*"
+      ],
+      "js": [
+        "decoy-bridge.js"
+      ],
+      "all_frames": true,
+      "match_about_blank": true,
+      "run_at": "document_start"
+    },
     {
       "matches": [
         "http://*/*",
