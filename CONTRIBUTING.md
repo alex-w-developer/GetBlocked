@@ -9,8 +9,7 @@ Thanks for helping improve GetBlocked! The project is intentionally small, local
 3. Run the relevant commands:
 
 ```bash
-npm run generate:rules
-npm run test:evidence
+npm run check
 ```
 
 4. Open a pull request.
@@ -33,8 +32,11 @@ Useful files:
 - `rules/rules.json`: generated DNR rules.
 - `shared/tracker-catalog.json`: source tracker catalog.
 - `shared/config.js`: generated content-script config.
+- `shared/decoy-transform.js`: request-field replacement helpers.
 - `content-script.js`: visible tracking-signal detection.
-- `background.js`: local report state and URL-cleaning counts.
+- `decoy-bridge.js`: isolated-world Decoy Mode bridge.
+- `decoy-interceptor.js`: experimental main-world request wrappers.
+- `background.js`: local report, rule-mode, session-profile, and URL-cleaning state.
 - `popup/`: popup UI.
 
 ## How To Run Tests
@@ -51,15 +53,13 @@ Run the evidence fixture:
 npm run test:evidence
 ```
 
-Run syntax checks:
+Run the complete local check suite:
 
 ```bash
-node --check background.js
-node --check content-script.js
-node --check popup/popup.js
-node --check scripts/generate-rules.mjs
-node --check scripts/evaluate-test-set.mjs
+npm run check
 ```
+
+For Decoy Mode work, also run `npm run test:browser` when a compatible local Chromium-family browser is available. See [docs/DECOY_MODE.md](docs/DECOY_MODE.md) and [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md).
 
 ## How To Add A Tracker Domain
 
@@ -84,6 +84,7 @@ For broken sites, include:
 - Steps to reproduce.
 - Chrome version and OS.
 - Whether disabling GetBlocked! fixes it.
+- Whether Decoy Mode was off or on.
 - Suspected tracker category or domain, if known.
 - Screenshot or video when useful.
 
@@ -109,6 +110,7 @@ You do not need to ask before opening a small PR for tracker-domain additions, b
 - [ ] I updated docs if behavior changed.
 - [ ] I ran `npm run generate:rules` if the catalog or params changed.
 - [ ] I ran `npm run test:evidence`.
+- [ ] I ran `npm run check`.
 - [ ] I ran relevant JSON/JS syntax checks.
 - [ ] I did not add broad/high-breakage domains.
 - [ ] I did not add exaggerated privacy claims.
@@ -122,6 +124,8 @@ You do not need to ask before opening a small PR for tracker-domain additions, b
 - Do not block captcha services.
 - Do not block core CDNs.
 - Do not add external analytics, telemetry, remote calls, or logging.
+- Do not initiate, duplicate, replay, or fabricate tracker events. Decoy Mode may only modify eligible page-initiated requests to catalog domains.
+- Do not rewrite purchase, conversion, transaction, revenue, product, currency, or ad-click fields.
 - Do not reintroduce `declarativeNetRequestFeedback`.
 - Do not reintroduce `webRequestBlocking`.
 - Do not reintroduce privacy score.

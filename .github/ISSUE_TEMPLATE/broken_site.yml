@@ -34,6 +34,17 @@ body:
         - "Not sure"
     validations:
       required: true
+  - type: dropdown
+    id: decoy_mode
+    attributes:
+      label: Was experimental Decoy Mode on?
+      description: If possible, reproduce once with Decoy Mode off and include both results.
+      options:
+        - "No"
+        - "Yes"
+        - "Not sure"
+    validations:
+      required: true
   - type: textarea
     id: media
     attributes:
