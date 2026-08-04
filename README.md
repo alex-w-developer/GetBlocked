@@ -22,6 +22,16 @@ It is built as a small, inspectable Manifest V3 project for people who want a fr
   - Detected categories
 - Keeps report data local in `chrome.storage.local`.
 
+## GetBlocked! in Action
+
+<p align="center">
+  <img src="assets/popup-screenshot.png" alt="GetBlocked! popup showing blocked trackers, cleaned links, and detected categories" width="360">
+</p>
+
+<p align="center">
+  <img src="assets/usage-demo.gif" alt="GetBlocked! usage demo on a real website" width="640">
+</p>
+
 ## What GetBlocked! Can Block
 
 GetBlocked! blocks a curated starter list of known third-party tracker domains and tracking URL parameters.
