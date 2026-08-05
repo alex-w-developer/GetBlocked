@@ -24,12 +24,16 @@ It is built as a small, inspectable Manifest V3 project for people who want a fr
 
 ## GetBlocked! in Action
 
-<p align="center">
-  <img src="assets/popup-screenshot.png" alt="GetBlocked! popup showing blocked trackers, cleaned links, and detected categories" width="360">
-</p>
+### Extension Popup Overview
 
 <p align="center">
-  <img src="assets/usage-demo.gif" alt="GetBlocked! usage demo on a real website" width="640">
+  <img src="assets/popup-screenshot.png" alt="GetBlocked! popup showing blocked trackers, cleaned links, and detected categories" width="760">
+</p>
+
+### Live Demo & Usage
+
+<p align="center">
+  <img src="assets/usage-demo.gif" alt="GetBlocked! usage demo on a real website" width="760">
 </p>
 
 ## What GetBlocked! Can Block
