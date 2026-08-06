@@ -27,7 +27,7 @@ It is built as a small, inspectable Manifest V3 project for people who want a fr
 ### Extension Popup Overview
 
 <p align="center">
-  <img src="assets/popup-screenshot.png" alt="GetBlocked! popup showing blocked trackers, cleaned links, and detected categories" width="560">
+  <img src="assets/popup-screenshot.png" alt="GetBlocked! popup showing blocked trackers, cleaned links, and detected categories" width="300">
 </p>
 
 ### Live Demo & Usage
