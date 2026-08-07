@@ -171,7 +171,11 @@
             : null;
         const nextValue = replacement === null ? currentValue : replacement;
         changed = changed || nextValue !== currentValue;
-        nextBody.append(key, nextValue);
+        if (typeof File !== "undefined" && nextValue instanceof File) {
+          nextBody.append(key, nextValue, nextValue.name);
+        } else {
+          nextBody.append(key, nextValue);
+        }
       }
 
       return { value: changed ? nextBody : body, changed };
@@ -198,9 +202,59 @@
     }
   }
 
+  function approximateSite(hostname) {
+    const normalizedHost = String(hostname || "").toLowerCase();
+    if (
+      !normalizedHost ||
+      normalizedHost === "localhost" ||
+      normalizedHost.includes(":") ||
+      /^\d{1,3}(?:\.\d{1,3}){3}$/.test(normalizedHost)
+    ) {
+      return normalizedHost;
+    }
+
+    const labels = normalizedHost.split(".").filter(Boolean);
+    return labels.length > 1 ? labels.slice(-2).join(".") : normalizedHost;
+  }
+
+  function isApproxThirdPartyHost(requestHostname, pageHostname) {
+    const requestHost = String(requestHostname || "").toLowerCase();
+    const pageHost = String(pageHostname || "").toLowerCase();
+
+    if (!requestHost) {
+      return false;
+    }
+    if (!pageHost) {
+      return true;
+    }
+    if (
+      requestHost === pageHost ||
+      requestHost.endsWith(`.${pageHost}`) ||
+      pageHost.endsWith(`.${requestHost}`)
+    ) {
+      return false;
+    }
+
+    return approximateSite(requestHost) !== approximateSite(pageHost);
+  }
+
+  function isThirdPartyTrackerUrl(rawUrl, baseUrl, trackerDomains) {
+    try {
+      const requestUrl = new URL(rawUrl, baseUrl);
+      const pageUrl = new URL(baseUrl);
+      return (
+        isKnownTrackerHost(requestUrl.hostname, trackerDomains) &&
+        isApproxThirdPartyHost(requestUrl.hostname, pageUrl.hostname)
+      );
+    } catch (error) {
+      return false;
+    }
+  }
+
   globalScope.GetBlockedDecoyTransform = Object.freeze({
     isKnownTrackerHost,
     isKnownTrackerUrl,
+    isThirdPartyTrackerUrl,
     replaceBody,
     replaceObject,
     replaceSearchParams,

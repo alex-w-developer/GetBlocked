@@ -9,7 +9,7 @@ const source = fs.readFileSync(
   path.join(rootDir, "shared", "decoy-transform.js"),
   "utf8"
 );
-const context = vm.createContext({ URL, URLSearchParams });
+const context = vm.createContext({ Blob, File, FormData, URL, URLSearchParams });
 vm.runInContext(source, context);
 
 const transform = context.GetBlockedDecoyTransform;
@@ -40,6 +40,22 @@ assert.equal(
     "https://metrics.example/v1/track",
     "https://example.com",
     ["segment.io"]
+  ),
+  false
+);
+assert.equal(
+  transform.isThirdPartyTrackerUrl(
+    "https://api.segment.io/v1/track",
+    "https://example.com",
+    ["api.segment.io"]
+  ),
+  true
+);
+assert.equal(
+  transform.isThirdPartyTrackerUrl(
+    "https://api.posthog.com/v1/track",
+    "https://app.posthog.com/project/1",
+    ["posthog.com"]
   ),
   false
 );
@@ -106,5 +122,17 @@ assert.equal(
   unknownResult.value,
   "event=page_view&order_id=order-real&amount=19.95"
 );
+
+const formBody = new FormData();
+formBody.append("email", "real@example.com");
+formBody.append(
+  "attachment",
+  new File(["fixture"], "evidence.txt", { type: "text/plain" })
+);
+const formResult = transform.replaceBody(formBody, profile);
+assert.equal(formResult.changed, true);
+assert.equal(formResult.value.get("email"), profile.email);
+assert.equal(formResult.value.get("attachment").name, "evidence.txt");
+assert.equal(formResult.value.get("attachment").type, "text/plain");
 
 console.log("Decoy transformation checks OK");

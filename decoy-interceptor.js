@@ -30,7 +30,11 @@
   function trackerHostname(rawUrl) {
     try {
       const url = new URL(rawUrl, window.location.href);
-      return transform.isKnownTrackerHost(url.hostname, TRACKER_DOMAINS)
+      return transform.isThirdPartyTrackerUrl(
+        rawUrl,
+        window.location.href,
+        TRACKER_DOMAINS
+      )
         ? url.hostname.toLowerCase()
         : "";
     } catch (error) {
