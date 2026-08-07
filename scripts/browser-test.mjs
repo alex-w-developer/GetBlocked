@@ -8,7 +8,7 @@
  *   1. Tracking URL parameters are removed from the final page URL by the
  *      extension's declarativeNetRequest redirect rules.
  *   2. The extension background service worker returns a report with
- *      reasonable (nonzero total activity) values.
+ *      reasonable (nonzero total activity) values and a matching badge.
  *   3. The popup exposes an experimental Decoy Mode toggle and privacy warning.
  *   4. Decoy Mode keeps URL cleanup on, disables only tracker blocking, reuses
  *      one session profile, counts modified requests, and avoids false blocks.
@@ -723,6 +723,15 @@ async function main() {
           totalActivity > 0,
           `totalActivity=${totalActivity}, page=${JSON.stringify(page)}`
         );
+
+        const normalBadgeText = await evaluateExtension(`
+          chrome.action.getBadgeText({ tabId: ${JSON.stringify(tabId)} })
+        `);
+        check(
+          "Background report: badge matches blocked estimate",
+          normalBadgeText === String(page.blockedOnPage || ""),
+          `badge=${JSON.stringify(normalBadgeText)}, blocked=${page.blockedOnPage}`
+        );
       } else {
         check("Background report: valid response", false, JSON.stringify(report));
       }
@@ -804,6 +813,15 @@ async function main() {
           decoyReport?.report?.page?.decoyedRequests > 0 &&
           decoyReport?.report?.page?.blockedOnPage === 0,
         JSON.stringify(decoyReport)
+      );
+      const decoyBadgeText = await evaluateExtension(`
+        chrome.action.getBadgeText({ tabId: ${JSON.stringify(tabId)} })
+      `);
+      check(
+        "Decoy Mode: badge matches decoyed request count",
+        decoyBadgeText ===
+          String(decoyReport?.report?.page?.decoyedRequests || ""),
+        `badge=${JSON.stringify(decoyBadgeText)}, report=${JSON.stringify(decoyReport)}`
       );
 
       const disabledPopup = await evaluatePopup(`

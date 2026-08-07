@@ -113,7 +113,7 @@ There are no extension-owned analytics, telemetry endpoints, remote logs, or bun
 5. Select the GetBlocked! project folder.
 6. Pin GetBlocked! and open the popup on normal web pages.
 
-The production build avoids debug-only DNR feedback permissions. The popup uses local page signals plus Chrome's production DNR action-count badge as a page-level estimate. In normal mode, blocking and URL cleanup are enforced by MV3 `declarativeNetRequest`; in Decoy Mode, only the blocking rule is disabled.
+The production build avoids debug-only DNR feedback permissions. The popup uses local page signals for a page-level estimate, and the extension badge mirrors **Blocked on this page** in normal mode or **Decoyed on this page** in Decoy Mode. URL-cleaning activity is reported separately. In normal mode, blocking and URL cleanup are enforced by MV3 `declarativeNetRequest`; in Decoy Mode, only the blocking rule is disabled.
 
 ## Contribute In 10 Minutes
 
