@@ -24,6 +24,20 @@ It is built as a small, inspectable Manifest V3 project for people who want a fr
 - Keeps report data local in `chrome.storage.local`.
 - Saves the Decoy Mode preference locally and keeps the generated fake profile only in `chrome.storage.session`.
 
+## GetBlocked! in Action
+
+### Extension Popup Overview
+
+<p align="center">
+  <img src="assets/popup-screenshot.png" alt="GetBlocked! popup showing blocked trackers, cleaned links, and detected categories" width="300">
+</p>
+
+### Live Demo & Usage
+
+<p align="center">
+  <img src="assets/usage-demo.gif" alt="GetBlocked! usage demo on a real website" width="960">
+</p>
+
 ## What GetBlocked! Can Block
 
 GetBlocked! blocks a curated starter list of known third-party tracker domains and tracking URL parameters.
