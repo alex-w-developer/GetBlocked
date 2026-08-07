@@ -93,25 +93,25 @@ function updateStaticRules(options) {
   return chrome.declarativeNetRequest.updateStaticRules(options);
 }
 
-function getBadgeText(tabId) {
+function setBadgeText(tabId, text) {
   return new Promise((resolve) => {
     if (!Number.isInteger(tabId) || tabId < 0) {
-      resolve("");
+      resolve();
       return;
     }
 
-    chrome.action.getBadgeText({ tabId }, (badgeText) => {
-      const error = chrome.runtime.lastError;
-      resolve(error ? "" : badgeText || "");
+    chrome.action.setBadgeText({ tabId, text }, () => {
+      void chrome.runtime.lastError;
+      resolve();
     });
   });
 }
 
-function setDnrActionBadgeEnabled() {
+function configureActionBadge() {
   chrome.action.setBadgeBackgroundColor({ color: "#0f766e" });
 
   chrome.declarativeNetRequest.setExtensionActionOptions(
-    { displayActionCountAsBadgeText: true },
+    { displayActionCountAsBadgeText: false },
     () => {
       void chrome.runtime.lastError;
     }
@@ -215,6 +215,9 @@ async function setDecoyMode(enabled) {
 
   if (enabled) {
     await clearBlockedCounts();
+  } else {
+    const tabStats = await getAllTabStats();
+    await syncAllTabBadges(tabStats, false);
   }
 
   return {
@@ -253,11 +256,6 @@ function countTrackingParams(rawUrl) {
   }
 }
 
-function parseDnrActionCount(badgeText) {
-  const match = String(badgeText || "").match(/\d+/);
-  return match ? Number(match[0]) : 0;
-}
-
 async function getAllTabStats() {
   const result = await storageGet(TAB_STATS_KEY);
   return result[TAB_STATS_KEY] || {};
@@ -267,6 +265,29 @@ async function setAllTabStats(tabStats) {
   await storageSet({
     [TAB_STATS_KEY]: tabStats
   });
+}
+
+function getActiveBadgeCount(stats, decoyMode) {
+  const count = decoyMode ? stats.decoyedRequests : stats.blockedOnPage;
+  return Math.max(0, Number(count) || 0);
+}
+
+async function syncBadgeForTab(tabId, stats, decoyMode = null) {
+  if (!Number.isInteger(tabId) || tabId < 0) {
+    return;
+  }
+
+  const mode = decoyMode === null ? await getDecoyMode() : decoyMode;
+  const count = getActiveBadgeCount(normalizeTabStats(stats), mode);
+  await setBadgeText(tabId, count > 0 ? String(count) : "");
+}
+
+async function syncAllTabBadges(tabStats, decoyMode = null) {
+  await Promise.all(
+    Object.entries(tabStats).map(([tabId, stats]) => {
+      return syncBadgeForTab(Number(tabId), stats, decoyMode);
+    })
+  );
 }
 
 async function clearBlockedCounts() {
@@ -285,6 +306,7 @@ async function clearBlockedCounts() {
     })
   );
   await setAllTabStats(nextStats);
+  await syncAllTabBadges(nextStats, true);
 }
 
 async function getTabStats(tabId) {
@@ -309,6 +331,7 @@ async function updateTabStats(tabId, updater) {
     ...tabStats,
     [String(tabId)]: next
   });
+  await syncBadgeForTab(tabId, next);
 
   return next;
 }
@@ -320,14 +343,17 @@ async function resetTabStats(tabId, initialStats = {}) {
 
   const tabStats = await getAllTabStats();
 
+  const next = normalizeTabStats({
+    ...createEmptyTabStats(),
+    ...initialStats,
+    updatedAt: Date.now()
+  });
+
   await setAllTabStats({
     ...tabStats,
-    [String(tabId)]: normalizeTabStats({
-      ...createEmptyTabStats(),
-      ...initialStats,
-      updatedAt: Date.now()
-    })
+    [String(tabId)]: next
   });
+  await syncBadgeForTab(tabId, next);
 }
 
 async function setPendingNavigation(tabId, trackingParamCount) {
@@ -404,18 +430,6 @@ async function syncBlockedEstimateForTab(tabId, estimate) {
   }));
 }
 
-async function syncDnrActionCountForTab(tabId) {
-  const badgeText = await getBadgeText(tabId);
-  const actionCount = parseDnrActionCount(badgeText);
-  const current = await getTabStats(tabId);
-  const estimatedBlockCount = Math.max(
-    0,
-    actionCount - current.trackingLinksCleaned
-  );
-
-  return syncBlockedEstimateForTab(tabId, estimatedBlockCount);
-}
-
 async function updatePageSignals(tabId, signals) {
   const detectedCategories = Array.isArray(signals.detectedCategories)
     ? signals.detectedCategories.filter((category) => {
@@ -470,17 +484,14 @@ async function recordDecoyedRequest(tabId, hostname) {
 async function getReport(tabId) {
   await updateQueue;
   const decoyMode = await getDecoyMode();
-  if (!decoyMode) {
-    await syncDnrActionCountForTab(tabId);
-  }
-
   const pageStats = await getTabStats(tabId);
+  await syncBadgeForTab(tabId, pageStats, decoyMode);
 
   return {
     page: pageStats,
     decoyMode,
     localOnly: true,
-    counterMode: "production_estimate"
+    counterMode: "local_estimate"
   };
 }
 
@@ -548,7 +559,7 @@ chrome.runtime.onInstalled.addListener(() => {
     await clearTransientLocalData();
     await syncDecoyRuleStateFromStorage();
   });
-  setDnrActionBadgeEnabled();
+  configureActionBadge();
 });
 
 chrome.runtime.onStartup.addListener(() => {
@@ -556,7 +567,7 @@ chrome.runtime.onStartup.addListener(() => {
     await clearTransientLocalData();
     await syncDecoyRuleStateFromStorage();
   });
-  setDnrActionBadgeEnabled();
+  configureActionBadge();
 });
 
 chrome.webNavigation.onBeforeNavigate.addListener((details) => {
@@ -593,3 +604,5 @@ chrome.tabs.onRemoved.addListener((tabId) => {
 });
 
 chrome.runtime.onMessage.addListener(handleMessage);
+
+configureActionBadge();
