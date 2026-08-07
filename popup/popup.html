@@ -15,14 +15,35 @@
         <div class="hero-copy">
           <p class="eyebrow">GetBlocked!</p>
           <h1>Privacy report</h1>
-          <p class="subtitle">Cleaner pages. Fewer trackers. Local-only.</p>
+          <p class="subtitle" id="mode-summary">Blocking known trackers and cleaning URLs.</p>
         </div>
       </header>
+
+      <section class="mode-card" aria-labelledby="decoy-mode-title">
+        <div class="mode-heading">
+          <div>
+            <span class="mode-title" id="decoy-mode-title">Decoy Mode</span>
+            <span class="experimental-badge">Experimental</span>
+          </div>
+          <label class="switch">
+            <span class="sr-only">Enable experimental Decoy Mode</span>
+            <input id="decoy-mode-toggle" type="checkbox" role="switch">
+            <span class="switch-track" aria-hidden="true"></span>
+          </label>
+        </div>
+        <p id="decoy-mode-description">
+          Off: known third-party tracker requests are blocked as usual.
+        </p>
+      </section>
 
       <section class="stats" aria-label="Tracker statistics">
         <div class="stat">
           <span class="stat-label">Blocked on this page</span>
           <strong id="page-blocked">0</strong>
+        </div>
+        <div class="stat">
+          <span class="stat-label">Decoyed on this page</span>
+          <strong id="page-decoyed">0</strong>
         </div>
         <div class="stat">
           <span class="stat-label">Tracking links cleaned</span>
@@ -43,7 +64,7 @@
 
       <footer class="footer">
         <span class="status-dot" aria-hidden="true"></span>
-        <p id="status-line">No browsing data leaves your device.</p>
+        <p id="status-line">GetBlocked! keeps its report data on your device.</p>
       </footer>
     </main>
     <script src="popup.js"></script>

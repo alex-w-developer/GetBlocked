@@ -191,3 +191,12 @@ These issue ideas are designed to become small, focused pull requests. Copy any 
 - Files to edit: `docs/BROKEN_SITES.md`
 - Commands to run: None required
 - Acceptance criteria: Notes help contributors propose safer fixes.
+
+### 21. Document Decoy Mode compatibility examples
+
+- Difficulty: Beginner
+- Labels: `good first issue`, `help wanted`, `PR welcome`, `documentation`, `MV3`
+- Goal: Add non-transactional examples of supported and unsupported request-body formats to `docs/DECOY_MODE.md`.
+- Files to edit: `docs/DECOY_MODE.md`
+- Commands to run: `npm run check`
+- Acceptance criteria: Examples use catalog-scoped test URLs, contain no personal data, do not create real requests, and preserve all event/transaction fields.

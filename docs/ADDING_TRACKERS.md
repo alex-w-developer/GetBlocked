@@ -37,6 +37,8 @@ Example tracker entry:
 
 Keep the domain narrow. Avoid broad platform domains, login providers, payment processors, captcha services, and core CDNs.
 
+The catalog is also Decoy Mode's hard scope boundary. When the experimental mode is on, page-level `fetch`, XHR, and beacon calls to this domain become eligible for identifier replacement instead of the normal DNR block. Confirm that the entry is genuinely a tracker endpoint and not a payment, login, captcha, or other transactional service.
+
 ## 2. Add One Test Fixture
 
 Open [test/tracker-test-set.json](../test/tracker-test-set.json).
@@ -79,6 +81,12 @@ npm run test:evidence
 
 Confirm the new fixture is blocked and category coverage still looks correct.
 
+Also run the full suite so catalog scoping and Decoy Mode safety checks remain covered:
+
+```bash
+npm run check
+```
+
 ## 5. Confirm Generated Files
 
 Before opening a PR, quickly inspect:
@@ -96,6 +104,7 @@ In your PR, include:
 - The category.
 - Why it should be blocked.
 - Any known breakage risk.
+- Any Decoy Mode risk if the host accepts mixed tracking and transactional traffic.
 - The commands you ran.
 
 Small PRs are welcome. One domain plus one test fixture is enough.
