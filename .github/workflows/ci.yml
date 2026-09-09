@@ -27,20 +27,5 @@ jobs:
             npm install
           fi
 
-      - name: Generate rules
-        run: npm run generate:rules
-
-      - name: Test evidence fixture
-        run: npm run test:evidence
-
-      - name: JS syntax checks
-        run: npm run check:syntax
-
-      - name: JSON parse checks
-        run: npm run check:json
-
-      - name: Generated files are in sync
-        run: npm run check:generated
-
-      - name: Safety checks
-        run: npm run check:safety
+      - name: Run canonical validation suite
+        run: npm run check
