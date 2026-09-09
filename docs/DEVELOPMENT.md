@@ -121,13 +121,15 @@ Rules stay limited to `domainType: "thirdParty"` to reduce website breakage.
 
 The popup requests a local report from the background service worker. It shows:
 
-- Blocked on this page
+- Estimated tracker resources on this page
 - Decoyed on this page
 - Tracking links cleaned
 - Visible tracking attempts detected
 - Detected categories
 
 It does not show a privacy score.
+
+The normal-mode estimate comes from unique resource URLs on known tracker domains that `content-script.js` can observe in the page. It does not claim to be a Chrome-confirmed count of DNR rule matches or blocked network requests. The production extension intentionally avoids the debug-only DNR feedback permission required for exact match reporting. The action badge uses the same estimate and exposes an explicit title; in Decoy Mode it switches to the exact number of supported request payloads modified by the extension.
 
 The popup also owns the **Decoy Mode (Experimental)** toggle. It asks the service worker to update the static-rule state before the saved setting changes, then refreshes the report. When the mode is on, the footer warns that tracker requests may still reveal IP and network metadata.
 

@@ -16,7 +16,7 @@ It is built as a small, inspectable Manifest V3 project for people who want a fr
 - Cleans common tracking URL parameters such as `utm_source`, `fbclid`, `gclid`, `dclid`, `mc_cid`, and similar campaign IDs.
 - Detects visible tracking attempts such as pixels, suspicious scripts, tracking iframes, and tracking links.
 - Shows a compact popup report with:
-  - Blocked on this page
+  - Estimated tracker resources on this page
   - Decoyed on this page
   - Tracking links cleaned
   - Visible tracking attempts detected
@@ -113,7 +113,7 @@ There are no extension-owned analytics, telemetry endpoints, remote logs, or bun
 5. Select the GetBlocked! project folder.
 6. Pin GetBlocked! and open the popup on normal web pages.
 
-The production build avoids debug-only DNR feedback permissions. The popup uses local page signals for a page-level estimate, and the extension badge mirrors **Blocked on this page** in normal mode or **Decoyed on this page** in Decoy Mode. URL-cleaning activity is reported separately. In normal mode, blocking and URL cleanup are enforced by MV3 `declarativeNetRequest`; in Decoy Mode, only the blocking rule is disabled.
+The production build avoids debug-only DNR feedback permissions. In normal mode, the popup and badge report an **Estimated tracker resources on this page** count derived from unique known-tracker resource URLs detected locally in the page. This is an estimate of tracker resources targeted by the blocking rules, not a Chrome-confirmed count of matched or blocked network requests. In Decoy Mode, the badge instead mirrors **Decoyed on this page**, which counts supported request payloads actually modified by the extension. URL-cleaning activity is reported separately. Normal-mode blocking and URL cleanup are enforced by MV3 `declarativeNetRequest`; in Decoy Mode, only the blocking rule is disabled.
 
 ## Contribute In 10 Minutes
 

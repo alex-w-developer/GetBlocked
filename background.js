@@ -107,6 +107,20 @@ function setBadgeText(tabId, text) {
   });
 }
 
+function setActionTitle(tabId, title) {
+  return new Promise((resolve) => {
+    if (!Number.isInteger(tabId) || tabId < 0) {
+      resolve();
+      return;
+    }
+
+    chrome.action.setTitle({ tabId, title }, () => {
+      void chrome.runtime.lastError;
+      resolve();
+    });
+  });
+}
+
 function configureActionBadge() {
   chrome.action.setBadgeBackgroundColor({ color: "#0f766e" });
 
@@ -279,7 +293,14 @@ async function syncBadgeForTab(tabId, stats, decoyMode = null) {
 
   const mode = decoyMode === null ? await getDecoyMode() : decoyMode;
   const count = getActiveBadgeCount(normalizeTabStats(stats), mode);
-  await setBadgeText(tabId, count > 0 ? String(count) : "");
+  const title = mode
+    ? `Decoyed requests on this page: ${count}`
+    : `Estimated tracker resources on this page: ${count}`;
+
+  await Promise.all([
+    setBadgeText(tabId, count > 0 ? String(count) : ""),
+    setActionTitle(tabId, title)
+  ]);
 }
 
 async function syncAllTabBadges(tabStats, decoyMode = null) {

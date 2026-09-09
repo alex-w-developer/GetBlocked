@@ -8,7 +8,7 @@
  *   1. Tracking URL parameters are removed from the final page URL by the
  *      extension's declarativeNetRequest redirect rules.
  *   2. The extension background service worker returns a report with
- *      reasonable (nonzero total activity) values and a matching badge.
+ *      reasonable (nonzero total activity) values and a clearly labeled badge.
  *   3. The popup exposes an experimental Decoy Mode toggle and privacy warning.
  *   4. Decoy Mode keeps URL cleanup on, disables only tracker blocking, reuses
  *      one session profile, counts modified requests, and avoids false blocks.
@@ -674,12 +674,20 @@ async function main() {
       const initialPopup = await evaluatePopup(`({
         checked: document.querySelector("#decoy-mode-toggle")?.checked,
         experimental:
-          document.querySelector(".experimental-badge")?.textContent?.trim()
+          document.querySelector(".experimental-badge")?.textContent?.trim(),
+        estimateLabel:
+          document.querySelector("#page-blocked")?.previousElementSibling?.textContent?.trim()
       })`);
       check(
         "Popup: experimental Decoy Mode toggle is present and off by default",
         initialPopup?.checked === false &&
           initialPopup?.experimental === "Experimental",
+        JSON.stringify(initialPopup)
+      );
+      check(
+        "Popup: normal-mode count is labeled as an estimate",
+        initialPopup?.estimateLabel ===
+          "Estimated tracker resources on this page",
         JSON.stringify(initialPopup)
       );
 
@@ -727,10 +735,19 @@ async function main() {
         const normalBadgeText = await evaluateExtension(`
           chrome.action.getBadgeText({ tabId: ${JSON.stringify(tabId)} })
         `);
+        const normalActionTitle = await evaluateExtension(`
+          chrome.action.getTitle({ tabId: ${JSON.stringify(tabId)} })
+        `);
         check(
           "Background report: badge matches blocked estimate",
           normalBadgeText === String(page.blockedOnPage || ""),
           `badge=${JSON.stringify(normalBadgeText)}, blocked=${page.blockedOnPage}`
+        );
+        check(
+          "Background report: badge title identifies the estimated count",
+          normalActionTitle ===
+            `Estimated tracker resources on this page: ${page.blockedOnPage || 0}`,
+          `title=${JSON.stringify(normalActionTitle)}, blocked=${page.blockedOnPage}`
         );
       } else {
         check("Background report: valid response", false, JSON.stringify(report));
@@ -817,11 +834,20 @@ async function main() {
       const decoyBadgeText = await evaluateExtension(`
         chrome.action.getBadgeText({ tabId: ${JSON.stringify(tabId)} })
       `);
+      const decoyActionTitle = await evaluateExtension(`
+        chrome.action.getTitle({ tabId: ${JSON.stringify(tabId)} })
+      `);
       check(
         "Decoy Mode: badge matches decoyed request count",
         decoyBadgeText ===
           String(decoyReport?.report?.page?.decoyedRequests || ""),
         `badge=${JSON.stringify(decoyBadgeText)}, report=${JSON.stringify(decoyReport)}`
+      );
+      check(
+        "Decoy Mode: badge title identifies the decoyed request count",
+        decoyActionTitle ===
+          `Decoyed requests on this page: ${decoyReport?.report?.page?.decoyedRequests || 0}`,
+        `title=${JSON.stringify(decoyActionTitle)}, report=${JSON.stringify(decoyReport)}`
       );
 
       const disabledPopup = await evaluatePopup(`
