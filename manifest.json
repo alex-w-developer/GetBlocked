@@ -4,9 +4,22 @@
   "version": "0.2.0",
   "minimum_chrome_version": "120",
   "description": "GetBlocked! is a free browser extension that reduces common third-party website trackers.",
+  "icons": {
+    "16": "assets/getblocked-logo-16p.png",
+    "32": "assets/getblocked-logo-32p.png",
+    "48": "assets/getblocked-logo-48p.png",
+    "128": "assets/getblocked-logo-128p.png"
+  },
+
   "action": {
     "default_popup": "popup/popup.html",
-    "default_title": "GetBlocked!"
+    "default_title": "GetBlocked!",
+    "default_icon": {
+      "16": "assets/getblocked-logo-16p.png",
+      "32": "assets/getblocked-logo-32p.png",
+      "48": "assets/getblocked-logo-48p.png",
+      "128": "assets/getblocked-logo-128p.png"
+    }
   },
   "background": {
     "service_worker": "background.js"
