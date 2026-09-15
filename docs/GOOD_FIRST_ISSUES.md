@@ -2,6 +2,8 @@
 
 These issue ideas are designed to become small, focused pull requests. Copy any item into a GitHub Issue and add the suggested labels.
 
+> Looking for existing work? Browse [open `good first issue`s](https://github.com/alex-w-developer/GetBlocked/issues?q=is%3Aissue+is%3Aopen+label%3A%22good+first+issue%22).
+
 ## Tracker-Domain Addition Issues
 
 ### 1. Add one analytics tracker fixture
@@ -105,7 +107,7 @@ These issue ideas are designed to become small, focused pull requests. Copy any 
 - Commands to run: None required
 - Acceptance criteria: Terms are explained in plain language.
 
-### 12. Improve local install docs for new Chrome users
+### 10. Improve local install docs for new Chrome users
 
 - Difficulty: Easy
 - Labels: `good first issue`, `help wanted`, `documentation`
@@ -116,7 +118,7 @@ These issue ideas are designed to become small, focused pull requests. Copy any 
 
 ## UI Polish Issues
 
-### 13. Improve empty category state copy
+### 11. Improve empty category state copy
 
 - Difficulty: Easy
 - Labels: `good first issue`, `help wanted`, `ux`
@@ -125,7 +127,7 @@ These issue ideas are designed to become small, focused pull requests. Copy any 
 - Commands to run: `node --check popup/popup.js`
 - Acceptance criteria: Popup remains compact and factual.
 
-### 14. Polish popup spacing on narrow widths
+### 12. Polish popup spacing on narrow widths
 
 - Difficulty: Easy
 - Labels: `good first issue`, `help wanted`, `ux`
@@ -134,7 +136,7 @@ These issue ideas are designed to become small, focused pull requests. Copy any 
 - Commands to run: None required
 - Acceptance criteria: Text does not overlap or clip.
 
-### 15. Add a local-only visual indicator variant
+### 13. Add a local-only visual indicator variant
 
 - Difficulty: Easy
 - Labels: `good first issue`, `help wanted`, `ux`
@@ -143,7 +145,7 @@ These issue ideas are designed to become small, focused pull requests. Copy any 
 - Commands to run: `node --check popup/popup.js`
 - Acceptance criteria: No external icons, fonts, or assets are added.
 
-### 16. Improve category chip readability
+### 14. Improve category chip readability
 
 - Difficulty: Easy
 - Labels: `good first issue`, `help wanted`, `ux`
@@ -154,7 +156,7 @@ These issue ideas are designed to become small, focused pull requests. Copy any 
 
 ## Test/CI Improvement Issues
 
-### 17. Add a generated-file sync checker script
+### 15. Add a generated-file sync checker script
 
 - Difficulty: Medium
 - Labels: `help wanted`, `testing`
@@ -163,7 +165,7 @@ These issue ideas are designed to become small, focused pull requests. Copy any 
 - Commands to run: `npm run generate:rules`, `npm run test:evidence`
 - Acceptance criteria: CI catches out-of-sync generated files.
 
-### 18. Expand category coverage reporting
+### 16. Expand category coverage reporting
 
 - Difficulty: Medium
 - Labels: `help wanted`, `testing`
@@ -174,7 +176,7 @@ These issue ideas are designed to become small, focused pull requests. Copy any 
 
 ## Research Issues
 
-### 19. Research low-breakage tracker candidates
+### 17. Research low-breakage tracker candidates
 
 - Difficulty: Medium
 - Labels: `help wanted`, `enhancement`
@@ -183,7 +185,7 @@ These issue ideas are designed to become small, focused pull requests. Copy any 
 - Commands to run: None required
 - Acceptance criteria: Each candidate includes category, rationale, and breakage risk.
 
-### 20. Research broken-site patterns
+### 18. Research broken-site patterns
 
 - Difficulty: Medium
 - Labels: `help wanted`, `bug`
@@ -192,7 +194,7 @@ These issue ideas are designed to become small, focused pull requests. Copy any 
 - Commands to run: None required
 - Acceptance criteria: Notes help contributors propose safer fixes.
 
-### 21. Document Decoy Mode compatibility examples
+### 19. Document Decoy Mode compatibility examples
 
 - Difficulty: Beginner
 - Labels: `good first issue`, `help wanted`, `documentation`, `browser-extension`
@@ -200,3 +202,11 @@ These issue ideas are designed to become small, focused pull requests. Copy any 
 - Files to edit: `docs/DECOY_MODE.md`
 - Commands to run: `npm run check`
 - Acceptance criteria: Examples use catalog-scoped test URLs, contain no personal data, do not create real requests, and preserve all event/transaction fields.
+
+## Completed ideas (removed from actionable list)
+
+The following entries from `332c66f` have been delivered and are kept here for reference — do not re-file them:
+
+- **Former item 9 — Add screenshots to the README** — delivered via [#2](https://github.com/alex-w-developer/GetBlocked/issues/2) / [PR #8](https://github.com/alex-w-developer/GetBlocked/pull/8), with media refreshed via [#9](https://github.com/alex-w-developer/GetBlocked/issues/9) / [PR #12](https://github.com/alex-w-developer/GetBlocked/pull/12) (both MERGED/CLOSED).
+- **Former item 10 — Improve the broken-site guide** — delivered via [PR #6](https://github.com/alex-w-developer/GetBlocked/pull/6) (MERGED) — see [docs/BROKEN_SITES.md](BROKEN_SITES.md).
+- **Former item 17 — Add a generated-file sync checker script** — delivered via [#1](https://github.com/alex-w-developer/GetBlocked/issues/1) / [PR #4](https://github.com/alex-w-developer/GetBlocked/pull/4) (MERGED/CLOSED) — repository now has `check:generated` (`git diff --exit-code -- rules/rules.json shared/config.js`) and canonical validation via `npm run check` / CI.
