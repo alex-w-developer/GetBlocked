@@ -11,8 +11,6 @@ later. Check status and comments before starting.
 | [#32](https://github.com/alex-w-developer/GetBlocked/issues/32) | Connect switch help text and announce popup status updates | `popup/popup.html`, `popup/popup.js` |
 | [#38](https://github.com/alex-w-developer/GetBlocked/issues/38) | Explain extension and tracking terms in a short glossary | `README.md`, `docs/DEVELOPMENT.md`, new `docs/GLOSSARY.md` |
 | [#39](https://github.com/alex-w-developer/GetBlocked/issues/39) | Show static Decoy Mode before/after examples | `docs/DECOY_MODE.md`, `shared/decoy-transform.js` |
-| [#40](https://github.com/alex-w-developer/GetBlocked/issues/40) | Respect reduced-motion settings for the popup switch | `popup/popup.css` |
-| [#41](https://github.com/alex-w-developer/GetBlocked/issues/41) | Test duplicate and broad-domain generator guards | `scripts/test-tooling.mjs`, `scripts/generate-rules.mjs` |
 
 Each issue includes a reason, acceptance criteria, verification steps, and scope
 boundaries. These are deliberately small changes; no new permissions or runtime
@@ -42,5 +40,7 @@ breaking application links.
 
 Screenshots, broken-site examples, generated-file sync validation, standard icons,
 catalog overlap checks, document-base URL resolution, and JSON error filenames
-have already been delivered. Do not recreate these tasks from older idea lists.
+have already been delivered. Reduced-motion support and duplicate/broad-domain
+generator regression tests are also complete (#40 and #41). Do not recreate these
+tasks from older idea lists.
 Use the live issue search before proposing new work.

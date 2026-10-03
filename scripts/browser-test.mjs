@@ -424,6 +424,7 @@ async function main() {
   let fileServer = null;
   let browserCdp = null;
   let pageCdp = null;
+  let secondPageCdp = null;
   let popupCdp = null;
   let extensionCdp = null;
   let decoyModeEnabledByTest = false;
@@ -699,8 +700,36 @@ async function main() {
         return result?.result?.value;
       }
 
+      const switchStyle = `(() => {
+        const track = document.querySelector('.switch-track');
+        const style = getComputedStyle(track);
+        return { track: style.transitionDuration,
+          thumb: getComputedStyle(track, '::after').transitionDuration,
+          focus: document.activeElement?.id === 'decoy-mode-toggle' &&
+            document.activeElement.matches(':focus-visible') &&
+            style.outlineStyle !== 'none' && parseFloat(style.outlineWidth) > 0 };
+      })()`;
+      await popupCdp.send("Emulation.setEmulatedMedia", {
+        features: [{ name: "prefers-reduced-motion", value: "reduce" }]
+      });
+      await popupCdp.send("Input.dispatchKeyEvent", { type: "keyDown", key: "Tab", code: "Tab", windowsVirtualKeyCode: 9 });
+      await popupCdp.send("Input.dispatchKeyEvent", { type: "keyUp", key: "Tab", code: "Tab", windowsVirtualKeyCode: 9 });
+      const reducedStyle = await evaluatePopup(switchStyle);
+      check("Popup: reduced motion removes switch transitions and preserves keyboard focus",
+        reducedStyle?.track === "0s" && reducedStyle.thumb === "0s" && reducedStyle.focus,
+        JSON.stringify(reducedStyle));
+      await popupCdp.send("Emulation.setEmulatedMedia", {
+        features: [{ name: "prefers-reduced-motion", value: "no-preference" }]
+      });
+      const defaultStyle = await evaluatePopup(switchStyle);
+      check("Popup: default switch transitions and keyboard focus remain available",
+        parseFloat(defaultStyle?.track) > 0 && parseFloat(defaultStyle?.thumb) > 0 && defaultStyle?.focus,
+        JSON.stringify(defaultStyle));
+
       const initialPopup = await evaluatePopup(`({
         checked: document.querySelector("#decoy-mode-toggle")?.checked,
+        scope: document.querySelector("#decoy-mode-scope")?.textContent || "",
+        description: document.querySelector("#decoy-mode-description")?.textContent || "",
         experimental:
           document.querySelector(".experimental-badge")?.textContent?.trim(),
         estimateLabel:
@@ -718,6 +747,10 @@ async function main() {
           "Estimated tracker resources on this page",
         JSON.stringify(initialPopup)
       );
+      check("Popup: global scope is explained before enabling Decoy Mode",
+        initialPopup?.scope.includes("all websites") &&
+        initialPopup.scope.includes("pauses tracker blocking everywhere") &&
+        initialPopup.description.includes("all websites"), JSON.stringify(initialPopup));
 
       const tabId = await evaluateExtension(`
         (async () => {
@@ -788,6 +821,7 @@ async function main() {
           await new Promise((resolve) => setTimeout(resolve, 1000));
           return {
             checked: toggle.checked,
+            description: document.querySelector("#decoy-mode-description")?.textContent || "",
             status: document.querySelector("#status-line")?.textContent || ""
           };
         })()
@@ -800,6 +834,9 @@ async function main() {
         decoyModeEnabledByTest,
         JSON.stringify(enabledPopup)
       );
+      check("Popup: enabled mode warns that blocking is paused on all websites",
+        enabledPopup?.description.includes("On for all websites") &&
+        enabledPopup.status.includes("paused on all websites"), JSON.stringify(enabledPopup));
 
       const disabledRuleIds = await evaluateExtension(`
         chrome.declarativeNetRequest.getDisabledRuleIds({
@@ -833,6 +870,34 @@ async function main() {
             secondConfiguration?.configuration?.profile?.userId,
         JSON.stringify({ firstConfiguration, secondConfiguration })
       );
+
+      const secondTarget = await browserCdp.send("Target.createTarget", {
+        url: `http://localhost:${TEST_PORT}${TEST_PATH}?ref=second-site`
+      });
+      await sleep(WAIT_MS);
+      const secondTargets = await cdpHttpGet(DEBUG_PORT, "/json/list");
+      const secondWorker = secondTargets.find(target => target.id === secondTarget.targetId);
+      if (!secondWorker?.webSocketDebuggerUrl) throw new Error("Second site target not found");
+      secondPageCdp = await openCdpSession(secondWorker.webSocketDebuggerUrl);
+      const secondTabId = await evaluateExtension(`(async () => {
+        const tabs = await chrome.tabs.query({});
+        return tabs.find(tab => String(tab.url || '').startsWith('http://localhost:${TEST_PORT}/'))?.id;
+      })()`);
+      const secondReport = await evaluateExtension(`getReport(${JSON.stringify(secondTabId)})`);
+      check("Decoy Mode: global preference applies to a different site",
+        secondReport?.decoyMode === true && secondReport.page?.decoyedRequests > 0,
+        JSON.stringify(secondReport));
+      await browserCdp.send("Target.activateTarget", { targetId: secondTarget.targetId });
+      await popupCdp.send("Page.reload");
+      await sleep(500);
+      const reopenedPopup = await evaluatePopup(`({
+        checked: document.querySelector('#decoy-mode-toggle')?.checked,
+        description: document.querySelector('#decoy-mode-description')?.textContent || '',
+        status: document.querySelector('#status-line')?.textContent || ''
+      })`);
+      check("Popup: reopening for another site retains the global warning",
+        reopenedPopup?.checked === true && reopenedPopup.description.includes("all websites") &&
+        reopenedPopup.status.includes("paused on all websites"), JSON.stringify(reopenedPopup));
 
       await pageCdp.send("Page.navigate", { url: testUrl });
       await sleep(WAIT_MS);
@@ -902,6 +967,16 @@ async function main() {
           disabledConfiguration?.enabled === false,
         JSON.stringify({ disabledPopup, disabledConfiguration })
       );
+      const restoredReports = await evaluateExtension(`Promise.all([
+        getReport(${JSON.stringify(tabId)}), getReport(${JSON.stringify(secondTabId)})
+      ])`);
+      const restoredRuleIds = await evaluateExtension(`chrome.declarativeNetRequest.getDisabledRuleIds({
+        rulesetId: 'getblocked_static_rules'
+      })`);
+      check("Decoy Mode: disabling restores catalog blocking on both sites",
+        restoredReports?.length === 2 && restoredReports.every(report => report.decoyMode === false) &&
+        Array.isArray(restoredRuleIds) && !restoredRuleIds.includes(1) && !restoredRuleIds.includes(1000),
+        JSON.stringify({ restoredReports, restoredRuleIds }));
     } else {
       warn(
         "Could not determine extension ID from service-worker target.\n" +
@@ -960,6 +1035,7 @@ async function main() {
     if (popupCdp) { try { popupCdp.close(); } catch { /* ignore */ } }
     if (extensionCdp) { try { extensionCdp.close(); } catch { /* ignore */ } }
     if (pageCdp) { try { pageCdp.close(); } catch { /* ignore */ } }
+    if (secondPageCdp) { try { secondPageCdp.close(); } catch { /* ignore */ } }
     if (browserCdp) { try { browserCdp.close(); } catch { /* ignore */ } }
 
     if (chromeProcess) {

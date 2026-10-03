@@ -25,6 +25,51 @@ function run(script, args = []) {
   return { ...result, output: result.stdout + result.stderr };
 }
 
+function generatorFixture(t, trackers) {
+  const dir = tempDir(t);
+  for (const folder of ["scripts", "shared", "rules"]) fs.mkdirSync(path.join(dir, folder));
+  for (const file of ["generate-rules.mjs", "catalog-overlaps.mjs"]) {
+    fs.copyFileSync(path.join(root, "scripts", file), path.join(dir, "scripts", file));
+  }
+  fs.writeFileSync(path.join(dir, "shared/tracking-params.json"), '["utm_source"]');
+  fs.writeFileSync(path.join(dir, "shared/tracker-catalog.json"), JSON.stringify({ trackers }));
+  return dir;
+}
+
+test("generator rejects duplicate domains before creating outputs", (t) => {
+  for (const duplicate of ["tracker.example.test", " TRACKER.EXAMPLE.TEST "]) {
+    const dir = generatorFixture(t, [entry("tracker.example.test"), entry(duplicate)]);
+    const result = run(path.join(dir, "scripts/generate-rules.mjs"));
+    assert.equal(result.status, 1, result.output);
+    assert.match(result.output, /Duplicate tracker domain in catalog: tracker\.example\.test/);
+    for (const file of ["rules/rules.json", "shared/config.js"]) {
+      assert.equal(fs.existsSync(path.join(dir, file)), false);
+    }
+  }
+});
+
+test("generator guards preserve existing outputs and reject broad domains", (t) => {
+  for (const trackers of [
+    [entry("tracker.example.test"), entry(" TRACKER.EXAMPLE.TEST ")],
+    [entry("google.com")]
+  ]) {
+    for (const existingOutputs of [false, true]) {
+      const dir = generatorFixture(t, trackers);
+      const outputs = ["rules/rules.json", "shared/config.js"];
+      if (existingOutputs) for (const output of outputs) fs.writeFileSync(path.join(dir, output), "sentinel\n");
+      const result = run(path.join(dir, "scripts/generate-rules.mjs"));
+      assert.equal(result.status, 1, result.output);
+      assert.match(result.output, trackers.length === 1
+        ? /Refusing broad high-breakage domain: google\.com/
+        : /Duplicate tracker domain in catalog: tracker\.example\.test/);
+      for (const output of outputs) {
+        if (existingOutputs) assert.equal(fs.readFileSync(path.join(dir, output), "utf8"), "sentinel\n");
+        else assert.equal(fs.existsSync(path.join(dir, output)), false);
+      }
+    }
+  }
+});
+
 test("evidence CLI rejects missed trackers and false positives, reporting every failure", (t) => {
   const dir = tempDir(t);
   const fixturePath = path.join(dir, "evidence.json");
@@ -267,5 +312,64 @@ test("catalog audit retains only explained overlaps and their category mappings"
       domains.some(domain => host === domain || host.endsWith(`.${domain}`))
     ).map(([category]) => category).sort();
     assert.deepEqual(actual, expected);
+  }
+});
+test("global Decoy preference reapplies catalog rules on startup and extension update", async () => {
+  const localData = {};
+  function startBackground() {
+    const listeners = {};
+    const event = name => ({ addListener: listener => { listeners[name] = listener; } });
+    const area = data => ({
+      get: (keys, callback) => callback(Object.fromEntries((Array.isArray(keys) ? keys : [keys]).map(key => [key, data[key]]))),
+      set: (items, callback) => { Object.assign(data, items); callback(); },
+      remove: (keys, callback) => { for (const key of keys) delete data[key]; callback(); }
+    });
+    const disabledRules = new Set();
+    let rejectRuleUpdate = false;
+    const context = vm.createContext({
+      console, URL, crypto: globalThis.crypto,
+      chrome: {
+        runtime: { onInstalled: event("installed"), onStartup: event("startup"), onMessage: event("message") },
+        storage: { local: area(localData), session: area({}) },
+        action: { setBadgeBackgroundColor: () => {}, setBadgeText: (_, callback) => callback(), setTitle: (_, callback) => callback() },
+        declarativeNetRequest: {
+          setExtensionActionOptions: (_, callback) => callback(),
+          updateStaticRules: async ({ disableRuleIds, enableRuleIds }) => {
+            if (rejectRuleUpdate) throw new Error("Simulated rule failure");
+            for (const id of disableRuleIds) disabledRules.add(id);
+            for (const id of enableRuleIds) disabledRules.delete(id);
+          }
+        },
+        webNavigation: { onBeforeNavigate: event("before"), onCommitted: event("committed") },
+        tabs: { onRemoved: event("removed") }
+      }
+    });
+    context.importScripts = file => vm.runInContext(fs.readFileSync(path.join(root, file), "utf8"), context);
+    vm.runInContext(fs.readFileSync(path.join(root, "background.js"), "utf8"), context);
+    return { context, disabledRules,
+      rejectRules: () => { rejectRuleUpdate = true; },
+      trigger: async name => { listeners[name](); await vm.runInContext("updateQueue", context); } };
+  }
+  const first = startBackground();
+  await vm.runInContext("setDecoyMode(true)", first.context);
+  assert.equal(localData.getblockedDecoyMode, true);
+  assert.deepEqual([...first.disabledRules], [1]);
+  for (const eventName of ["startup", "installed"]) {
+    const restarted = startBackground();
+    await restarted.trigger(eventName);
+    assert.equal(localData.getblockedDecoyMode, true);
+    assert.deepEqual([...restarted.disabledRules], [1]);
+    await vm.runInContext("setDecoyMode(false)", restarted.context);
+    assert.equal(localData.getblockedDecoyMode, false);
+    assert.equal(restarted.disabledRules.size, 0);
+    const normalRestart = startBackground();
+    normalRestart.disabledRules.add(1);
+    await normalRestart.trigger(eventName);
+    assert.equal(normalRestart.disabledRules.size, 0);
+    normalRestart.rejectRules();
+    await assert.rejects(vm.runInContext("setDecoyMode(true)", normalRestart.context), /Simulated rule failure/);
+    assert.equal(localData.getblockedDecoyMode, false);
+    assert.equal(normalRestart.disabledRules.size, 0);
+    await vm.runInContext("setDecoyMode(true)", restarted.context);
   }
 });

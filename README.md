@@ -70,7 +70,7 @@ When experimental Decoy Mode is on, the main tracker-blocking rule is disabled, 
 
 ## Experimental Decoy Mode
 
-Decoy Mode is off by default. Use the clearly labeled **Experimental** toggle in the popup to enable it.
+Decoy Mode is off by default. Use the clearly labeled **Experimental** toggle in the popup to enable it. It applies to **all websites**: turning it on from one site's popup pauses catalog tracker blocking everywhere, including other tabs. URL cleanup stays on. Turn it off from any site's popup to restore blocking everywhere; the global preference remains saved across browser restarts.
 
 While enabled:
 

@@ -104,15 +104,15 @@ function renderReport(report) {
   footerEl.classList.toggle("is-warning", decoyMode === true);
 
   if (decoyMode) {
-    modeSummaryEl.textContent = "Sending consistent fake identifiers where feasible.";
+    modeSummaryEl.textContent = "Decoy Mode is on for all websites.";
     decoyModeDescriptionEl.textContent =
-      "On: tracker blocking is paused, URL cleanup stays on, and supported analytics identifiers are replaced.";
+      "On for all websites: tracker blocking is paused, URL cleanup stays on, and supported analytics identifiers are replaced.";
     statusLineEl.textContent =
-      "Trackers may still see your IP address and other network metadata.";
+      "Tracker blocking is paused on all websites. Trackers may still see your IP address and other network metadata.";
   } else {
     modeSummaryEl.textContent = "Blocking known trackers and cleaning URLs.";
     decoyModeDescriptionEl.textContent =
-      "Off: known third-party tracker requests are blocked as usual.";
+      "Off: known third-party tracker requests are blocked on all websites.";
     statusLineEl.textContent =
       "GetBlocked! keeps its report data on your device.";
   }
