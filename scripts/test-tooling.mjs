@@ -292,3 +292,63 @@ test("catalog audit retains only explained overlaps and their category mappings"
     assert.deepEqual(actual, expected);
   }
 });
+test("global Decoy preference reapplies catalog rules on startup and extension update", async () => {
+  const localData = {};
+  function startBackground() {
+    const listeners = {};
+    const event = name => ({ addListener: listener => { listeners[name] = listener; } });
+    const area = data => ({
+      get: (keys, callback) => callback(Object.fromEntries((Array.isArray(keys) ? keys : [keys]).map(key => [key, data[key]]))),
+      set: (items, callback) => { Object.assign(data, items); callback(); },
+      remove: (keys, callback) => { for (const key of keys) delete data[key]; callback(); }
+    });
+    const disabledRules = new Set();
+    let rejectRuleUpdate = false;
+    const context = vm.createContext({
+      console, URL, crypto: globalThis.crypto,
+      chrome: {
+        runtime: { onInstalled: event("installed"), onStartup: event("startup"), onMessage: event("message") },
+        storage: { local: area(localData), session: area({}) },
+        action: { setBadgeBackgroundColor: () => {}, setBadgeText: (_, callback) => callback(), setTitle: (_, callback) => callback() },
+        declarativeNetRequest: {
+          setExtensionActionOptions: (_, callback) => callback(),
+          updateStaticRules: async ({ disableRuleIds, enableRuleIds }) => {
+            if (rejectRuleUpdate) throw new Error("Simulated rule failure");
+            for (const id of disableRuleIds) disabledRules.add(id);
+            for (const id of enableRuleIds) disabledRules.delete(id);
+          }
+        },
+        webNavigation: { onBeforeNavigate: event("before"), onCommitted: event("committed") },
+        tabs: { onRemoved: event("removed") }
+      }
+    });
+    context.importScripts = file => vm.runInContext(fs.readFileSync(path.join(root, file), "utf8"), context);
+    vm.runInContext(fs.readFileSync(path.join(root, "background.js"), "utf8"), context);
+    return { context, disabledRules,
+      rejectRules: () => { rejectRuleUpdate = true; },
+      trigger: async name => { listeners[name](); await vm.runInContext("updateQueue", context); } };
+  }
+  const first = startBackground();
+  await vm.runInContext("setDecoyMode(true)", first.context);
+  assert.equal(localData.getblockedDecoyMode, true);
+  assert.deepEqual([...first.disabledRules], [1]);
+  for (const eventName of ["startup", "installed"]) {
+    const restarted = startBackground();
+    await restarted.trigger(eventName);
+    assert.equal(localData.getblockedDecoyMode, true);
+    assert.deepEqual([...restarted.disabledRules], [1]);
+    await vm.runInContext("setDecoyMode(false)", restarted.context);
+    assert.equal(localData.getblockedDecoyMode, false);
+    assert.equal(restarted.disabledRules.size, 0);
+    const normalRestart = startBackground();
+    normalRestart.disabledRules.add(1);
+    await normalRestart.trigger(eventName);
+    assert.equal(normalRestart.disabledRules.size, 0);
+    normalRestart.rejectRules();
+    await assert.rejects(vm.runInContext("setDecoyMode(true)", normalRestart.context), /Simulated rule failure/);
+    assert.equal(localData.getblockedDecoyMode, false);
+    assert.equal(normalRestart.disabledRules.size, 0);
+    await vm.runInContext("setDecoyMode(true)", restarted.context);
+  }
+});
+
