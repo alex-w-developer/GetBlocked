@@ -159,7 +159,7 @@ It does not show a privacy score.
 
 The normal-mode estimate comes from unique resource URLs on known tracker domains that `content-script.js` can observe in the page. It does not claim to be a Chrome-confirmed count of DNR rule matches or blocked network requests. The production extension intentionally avoids the debug-only DNR feedback permission required for exact match reporting. The action badge uses the same estimate and exposes an explicit title; in Decoy Mode it switches to the exact number of supported request payloads modified by the extension.
 
-The popup also owns the **Decoy Mode (Experimental)** toggle. It asks the service worker to update the static-rule state before the saved setting changes, then refreshes the report. When the mode is on, the footer warns that tracker requests may still reveal IP and network metadata.
+The popup also owns the **Decoy Mode (Experimental)** toggle. It controls all websites, not just the current tab. A permanent description explains that enabling it pauses tracker blocking everywhere; the enabled description and footer repeat that scope and the network privacy limits. It asks the service worker to update the static-rule state before the saved setting changes, then refreshes the report. The global preference is reapplied on browser startup and extension install/update.
 
 ## How Content-Script Detection Works
 

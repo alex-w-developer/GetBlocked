@@ -4,6 +4,21 @@ Decoy Mode is an optional experiment for replacing supported analytics identifie
 
 ## What Changes When It Is On
 
+Decoy Mode applies to **all websites**, including other open tabs and newly
+visited sites. Turning it on in one site's popup pauses catalog tracker blocking
+everywhere. It is not a per-site exception. The popup explains this before you
+enable it and keeps the global warning visible while it is on.
+
+The setting survives popup closure, browser restart, and extension updates. Turn
+it off from any site's popup to restore catalog blocking on all websites. Reload
+pages after changing modes to repeat requests made under the previous mode.
+URL cleanup remains enabled in both modes.
+
+The existing global preference and static rule switching are retained. Per-site
+Decoy Mode would require separate site policy, rule management, and persistence;
+it should be designed with per-site protection in
+[#18](https://github.com/alex-w-developer/GetBlocked/issues/18).
+
 The popup toggle saves `getblockedDecoyMode` in `chrome.storage.local`. The background service worker then uses `chrome.declarativeNetRequest.updateStaticRules()` to:
 
 - Disable static rule `1`, the third-party tracker-domain blocking rule.
