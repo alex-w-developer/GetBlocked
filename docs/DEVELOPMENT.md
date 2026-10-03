@@ -114,6 +114,12 @@ for Testing with a commit-pinned [setup-chrome action](https://github.com/browse
 sets `CHROME_PATH` from its output, and runs required mode with a ten-minute job
 timeout. Assertion failures always fail, including in local mode.
 
+The disposable Ubuntu CI runner sets `CHROME_NO_SANDBOX=1` because downloaded
+automation builds lack the installed browser's sandbox profile. This disables the
+test browser's OS sandbox only in that explicit environment; it does not change
+the extension or its permissions. Leave this unset for everyday local browsing.
+Startup failures print bounded Chrome stderr diagnostics for investigation.
+
 ## URL-cleaning Regression Fixtures
 
 Generic `ref` parameters are preserved: their meaning may be an invitation,

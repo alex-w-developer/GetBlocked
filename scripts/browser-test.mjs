@@ -22,6 +22,7 @@
  *   CHROME_PATH   – override Chromium-family browser executable path
  *   TEST_PORT     – override local static server port (default 8765)
  *   DEBUG_PORT    – override Chrome CDP remote debugging port (default 9333)
+ *   CHROME_NO_SANDBOX – set to 1 only on an isolated CI runner that needs it
  *   Required mode: pass --required to fail instead of skipping if unavailable.
  */
 
@@ -486,6 +487,7 @@ async function main() {
       "--disable-popup-blocking",
       "--allow-running-insecure-content",
       "--headless=new",
+      ...(process.env.CHROME_NO_SANDBOX === "1" ? ["--no-sandbox"] : []),
     ];
 
     chromeProcess = spawn(chromePath, chromeArgs, {
@@ -495,8 +497,10 @@ async function main() {
 
     // Capture the browser-level WS URL from Chrome's startup log line.
     let browserWsUrl = null;
+    let chromeStderr = "";
     chromeProcess.stderr.on("data", (data) => {
       const line = data.toString();
+      chromeStderr = (chromeStderr + line).slice(-4000);
       const m = line.match(/DevTools listening on (ws:\/\/\S+)/);
       if (m) browserWsUrl = m[1];
     });
@@ -512,6 +516,7 @@ async function main() {
     try {
       await waitForPort(DEBUG_PORT, 20000);
     } catch (err) {
+      console.error(PREFIX, "Chrome startup diagnostics:", chromeStderr || "(no stderr)");
       throw launchError || err;
     }
     // Give the extension service worker time to initialise
