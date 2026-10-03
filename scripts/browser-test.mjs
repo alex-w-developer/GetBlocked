@@ -34,6 +34,7 @@ import { spawn } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import os from "node:os";
 import crypto from "node:crypto";
+import { selectExtensionTarget } from "./browser-targets.mjs";
 
 // ---------------------------------------------------------------------------
 // Config
@@ -605,13 +606,23 @@ async function main() {
     log("Final page URL:", finalUrl);
 
     const loadedTargets = await cdpHttpGet(DEBUG_PORT, "/json/list");
-    const extensionLoaded = loadedTargets.some(
-      (target) =>
-        target.type === "service_worker" &&
-        target.url.startsWith("chrome-extension://") &&
-        target.url.includes("background.js")
-    );
-    if (!extensionLoaded) {
+    const manifest = JSON.parse(fs.readFileSync(path.join(ROOT, "manifest.json"), "utf8"));
+    const swTarget = await selectExtensionTarget(loadedTargets, manifest, async (target) => {
+      const session = await openCdpSession(target.webSocketDebuggerUrl);
+      try {
+        const result = await session.send("Runtime.evaluate", {
+          expression: `({ id: chrome.runtime.id,
+            name: chrome.runtime.getManifest().name,
+            version: chrome.runtime.getManifest().version })`,
+          returnByValue: true,
+        });
+        log("Worker identity:", JSON.stringify(result?.result?.value));
+        return result?.result?.value;
+      } finally {
+        session.close();
+      }
+    });
+    if (!swTarget) {
       throw new Error("Unpacked extension was not loaded by this browser");
     }
 
@@ -634,13 +645,6 @@ async function main() {
     // 7. Assert: background service worker returns a valid report
     // ------------------------------------------------------------------
     // Identify and connect directly to the extension service worker target.
-    const latestTargets = await cdpHttpGet(DEBUG_PORT, "/json/list");
-    const swTarget = latestTargets.find(
-      (t) =>
-        t.type === "service_worker" &&
-        t.url.startsWith("chrome-extension://") &&
-        t.url.includes("background.js")
-    );
     const extensionId = swTarget ? new URL(swTarget.url).hostname : null;
     log("Extension ID:", extensionId || "(not found)");
 

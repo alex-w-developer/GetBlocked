@@ -7,6 +7,7 @@ import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import test from "node:test";
 import { findCatalogOverlaps } from "./catalog-overlaps.mjs";
+import { selectExtensionTarget } from "./browser-targets.mjs";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const readJson = (file) => JSON.parse(fs.readFileSync(path.join(root, file), "utf8"));
@@ -85,6 +86,22 @@ test("browser CLI skips locally and fails in required mode when Chrome is missin
     assert.match(output, required ? /FAIL.*Required browser/ : /SKIP:/);
     assert.doesNotMatch(output, /All checks passed/);
   }
+});
+
+test("browser target selection ignores unrelated and stale background workers", async () => {
+  const manifest = { name: "GetBlocked!", version: "0.2.0", background: { service_worker: "background.js" } };
+  const worker = id => ({ type: "service_worker", url: `chrome-extension://${id}/background.js`, webSocketDebuggerUrl: `ws://${id}` });
+  const targets = [worker("unrelated"), worker("stale"), worker("wrong-version"), worker("wrong-id"), worker("getblocked")];
+  const probe = async target => {
+    const id = new URL(target.url).hostname;
+    if (id === "stale") throw new Error("Worker closed");
+    return { id: id === "wrong-id" ? "other" : id,
+      name: id === "unrelated" ? "Other extension" : manifest.name,
+      version: id === "wrong-version" ? "0.1.0" : manifest.version };
+  };
+  assert.equal(await selectExtensionTarget(targets, manifest, probe), targets[4]);
+  assert.equal(await selectExtensionTarget(targets.slice(0, 4), manifest, probe), null);
+  assert.equal(await selectExtensionTarget([{ ...worker("getblocked"), type: "page" }], manifest, probe), null);
 });
 
 test("JSON checker identifies malformed and missing files and preserves valid output", (t) => {
