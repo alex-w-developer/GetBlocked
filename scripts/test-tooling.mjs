@@ -25,6 +25,29 @@ function run(script, args = []) {
   return { ...result, output: result.stdout + result.stderr };
 }
 
+function generatorFixture(t, trackers) {
+  const dir = tempDir(t);
+  for (const folder of ["scripts", "shared", "rules"]) fs.mkdirSync(path.join(dir, folder));
+  for (const file of ["generate-rules.mjs", "catalog-overlaps.mjs"]) {
+    fs.copyFileSync(path.join(root, "scripts", file), path.join(dir, "scripts", file));
+  }
+  fs.writeFileSync(path.join(dir, "shared/tracking-params.json"), '["utm_source"]');
+  fs.writeFileSync(path.join(dir, "shared/tracker-catalog.json"), JSON.stringify({ trackers }));
+  return dir;
+}
+
+test("generator rejects duplicate domains before creating outputs", (t) => {
+  for (const duplicate of ["tracker.example.test", " TRACKER.EXAMPLE.TEST "]) {
+    const dir = generatorFixture(t, [entry("tracker.example.test"), entry(duplicate)]);
+    const result = run(path.join(dir, "scripts/generate-rules.mjs"));
+    assert.equal(result.status, 1, result.output);
+    assert.match(result.output, /Duplicate tracker domain in catalog: tracker\.example\.test/);
+    for (const file of ["rules/rules.json", "shared/config.js"]) {
+      assert.equal(fs.existsSync(path.join(dir, file)), false);
+    }
+  }
+});
+
 test("evidence CLI rejects missed trackers and false positives, reporting every failure", (t) => {
   const dir = tempDir(t);
   const fixturePath = path.join(dir, "evidence.json");
