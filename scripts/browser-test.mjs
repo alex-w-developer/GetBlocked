@@ -699,6 +699,32 @@ async function main() {
         return result?.result?.value;
       }
 
+      const switchStyle = `(() => {
+        const track = document.querySelector('.switch-track');
+        const style = getComputedStyle(track);
+        return { track: style.transitionDuration,
+          thumb: getComputedStyle(track, '::after').transitionDuration,
+          focus: document.activeElement?.id === 'decoy-mode-toggle' &&
+            document.activeElement.matches(':focus-visible') &&
+            style.outlineStyle !== 'none' && parseFloat(style.outlineWidth) > 0 };
+      })()`;
+      await popupCdp.send("Emulation.setEmulatedMedia", {
+        features: [{ name: "prefers-reduced-motion", value: "reduce" }]
+      });
+      await popupCdp.send("Input.dispatchKeyEvent", { type: "keyDown", key: "Tab", code: "Tab", windowsVirtualKeyCode: 9 });
+      await popupCdp.send("Input.dispatchKeyEvent", { type: "keyUp", key: "Tab", code: "Tab", windowsVirtualKeyCode: 9 });
+      const reducedStyle = await evaluatePopup(switchStyle);
+      check("Popup: reduced motion removes switch transitions and preserves keyboard focus",
+        reducedStyle?.track === "0s" && reducedStyle.thumb === "0s" && reducedStyle.focus,
+        JSON.stringify(reducedStyle));
+      await popupCdp.send("Emulation.setEmulatedMedia", {
+        features: [{ name: "prefers-reduced-motion", value: "no-preference" }]
+      });
+      const defaultStyle = await evaluatePopup(switchStyle);
+      check("Popup: default switch transitions and keyboard focus remain available",
+        parseFloat(defaultStyle?.track) > 0 && parseFloat(defaultStyle?.thumb) > 0 && defaultStyle?.focus,
+        JSON.stringify(defaultStyle));
+
       const initialPopup = await evaluatePopup(`({
         checked: document.querySelector("#decoy-mode-toggle")?.checked,
         experimental:
