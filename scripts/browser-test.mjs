@@ -701,6 +701,8 @@ async function main() {
 
       const initialPopup = await evaluatePopup(`({
         checked: document.querySelector("#decoy-mode-toggle")?.checked,
+        scope: document.querySelector("#decoy-mode-scope")?.textContent || "",
+        description: document.querySelector("#decoy-mode-description")?.textContent || "",
         experimental:
           document.querySelector(".experimental-badge")?.textContent?.trim(),
         estimateLabel:
@@ -718,6 +720,10 @@ async function main() {
           "Estimated tracker resources on this page",
         JSON.stringify(initialPopup)
       );
+      check("Popup: global scope is explained before enabling Decoy Mode",
+        initialPopup?.scope.includes("all websites") &&
+        initialPopup.scope.includes("pauses tracker blocking everywhere") &&
+        initialPopup.description.includes("all websites"), JSON.stringify(initialPopup));
 
       const tabId = await evaluateExtension(`
         (async () => {
@@ -788,6 +794,7 @@ async function main() {
           await new Promise((resolve) => setTimeout(resolve, 1000));
           return {
             checked: toggle.checked,
+            description: document.querySelector("#decoy-mode-description")?.textContent || "",
             status: document.querySelector("#status-line")?.textContent || ""
           };
         })()
@@ -800,6 +807,9 @@ async function main() {
         decoyModeEnabledByTest,
         JSON.stringify(enabledPopup)
       );
+      check("Popup: enabled mode warns that blocking is paused on all websites",
+        enabledPopup?.description.includes("On for all websites") &&
+        enabledPopup.status.includes("paused on all websites"), JSON.stringify(enabledPopup));
 
       const disabledRuleIds = await evaluateExtension(`
         chrome.declarativeNetRequest.getDisabledRuleIds({
