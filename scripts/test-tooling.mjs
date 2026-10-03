@@ -48,6 +48,28 @@ test("generator rejects duplicate domains before creating outputs", (t) => {
   }
 });
 
+test("generator guards preserve existing outputs and reject broad domains", (t) => {
+  for (const trackers of [
+    [entry("tracker.example.test"), entry(" TRACKER.EXAMPLE.TEST ")],
+    [entry("google.com")]
+  ]) {
+    for (const existingOutputs of [false, true]) {
+      const dir = generatorFixture(t, trackers);
+      const outputs = ["rules/rules.json", "shared/config.js"];
+      if (existingOutputs) for (const output of outputs) fs.writeFileSync(path.join(dir, output), "sentinel\n");
+      const result = run(path.join(dir, "scripts/generate-rules.mjs"));
+      assert.equal(result.status, 1, result.output);
+      assert.match(result.output, trackers.length === 1
+        ? /Refusing broad high-breakage domain: google\.com/
+        : /Duplicate tracker domain in catalog: tracker\.example\.test/);
+      for (const output of outputs) {
+        if (existingOutputs) assert.equal(fs.readFileSync(path.join(dir, output), "utf8"), "sentinel\n");
+        else assert.equal(fs.existsSync(path.join(dir, output)), false);
+      }
+    }
+  }
+});
+
 test("evidence CLI rejects missed trackers and false positives, reporting every failure", (t) => {
   const dir = tempDir(t);
   const fixturePath = path.join(dir, "evidence.json");
