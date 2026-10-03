@@ -316,3 +316,10 @@ h1 {
   background: var(--warning);
   box-shadow: 0 0 0 4px rgba(217, 119, 6, 0.12);
 }
+
+@media (prefers-reduced-motion: reduce) {
+  .switch-track,
+  .switch-track::after {
+    transition: none;
+  }
+}
