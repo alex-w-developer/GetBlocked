@@ -54,6 +54,39 @@ test("evidence CLI keeps successful coverage output", () => {
   assert.match(result.output, /PASS:/);
 });
 
+test("evidence CLI enforces exact landing URL expectations", (t) => {
+  const dir = tempDir(t);
+  const fixturePath = path.join(dir, "landing.json");
+  const url = "https://app.example.test/invite?ref=invite42&utm_source=mail";
+  for (const [expectedUrl, status] of [
+    ["https://app.example.test/invite?ref=invite42", 0],
+    ["https://app.example.test/invite", 1],
+    [url, 1]
+  ]) {
+    fs.writeFileSync(fixturePath, JSON.stringify({ name: "Landing regression", pages: [], landingUrls: [],
+      landingUrlChecks: [{ url, expectedUrl }] }));
+    const result = run(path.join(root, "scripts/evaluate-test-set.mjs"), [fixturePath]);
+    assert.equal(result.status, status, result.output);
+    if (status) assert.match(result.output, /FAIL: landing URL.*expected.*got/);
+  }
+});
+
+test("browser CLI skips locally and fails in required mode when Chrome is missing", (t) => {
+  const dir = tempDir(t);
+  for (const required of [false, true]) {
+    const result = spawnSync(process.execPath,
+      [path.join(root, "scripts/browser-test.mjs"), ...(required ? ["--required"] : [])], {
+        encoding: "utf8", timeout: 10000,
+        env: { ...process.env, CHROME_PATH: path.join(dir, "missing-chrome") }
+      });
+    assert.ifError(result.error);
+    const output = result.stdout + result.stderr;
+    assert.equal(result.status, required ? 1 : 0, output);
+    assert.match(output, required ? /FAIL.*Required browser/ : /SKIP:/);
+    assert.doesNotMatch(output, /All checks passed/);
+  }
+});
+
 test("JSON checker identifies malformed and missing files and preserves valid output", (t) => {
   const dir = tempDir(t);
   const files = [

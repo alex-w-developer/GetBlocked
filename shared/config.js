@@ -12,7 +12,6 @@
   "mc_cid",
   "mc_eid",
   "igshid",
-  "ref",
   "affiliate_id"
 ];
 

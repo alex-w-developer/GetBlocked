@@ -69,7 +69,7 @@ function isBlockedByRules(request, topUrl) {
   });
 }
 
-function trackingParamsRemovedByRules(rawUrl) {
+function cleanLandingUrl(rawUrl) {
   const url = new URL(rawUrl);
   const redirectRules = rules.filter((rule) => {
     return rule.action?.type === "redirect" && requestMatchesRule(
@@ -88,9 +88,10 @@ function trackingParamsRemovedByRules(rawUrl) {
   let removed = 0;
   for (const paramName of paramsToRemove) {
     removed += url.searchParams.getAll(paramName).length;
+    url.searchParams.delete(paramName);
   }
 
-  return removed;
+  return { removedParams: removed, cleanedUrl: url.href };
 }
 
 const requests = testSet.pages.flatMap((page) => {
@@ -134,7 +135,7 @@ const categorySummary = categories.map((category) => {
 const landingParamSummary = testSet.landingUrls.map((url) => {
   return {
     url,
-    removedParams: trackingParamsRemovedByRules(url)
+    ...cleanLandingUrl(url)
   };
 });
 const totalRemovedParams = landingParamSummary.reduce((sum, item) => {
@@ -158,8 +159,15 @@ for (const request of [...missedKnownTrackers, ...falsePositives]) {
   const actual = request.tracker ? "unblocked" : "blocked";
   console.error(`FAIL: ${request.fixture}: ${request.url} (page: ${request.topUrl}); expected ${expected}, got ${actual}`);
 }
-if (missedKnownTrackers.length || falsePositives.length) {
+const landingFailures = (testSet.landingUrlChecks || []).filter(({ url, expectedUrl }) => {
+  const actual = cleanLandingUrl(url).cleanedUrl;
+  if (actual === expectedUrl) return false;
+  console.error(`FAIL: landing URL ${url}; expected ${expectedUrl}, got ${actual}`);
+  return true;
+});
+if (missedKnownTrackers.length || falsePositives.length || landingFailures.length) {
   process.exitCode = 1;
 } else {
   console.log(`PASS: all ${requests.length} request fixtures match their expected blocking result.`);
+  console.log(`PASS: all ${(testSet.landingUrlChecks || []).length} landing URL checks match their expected result.`);
 }

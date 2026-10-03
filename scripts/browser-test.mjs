@@ -22,6 +22,7 @@
  *   CHROME_PATH   – override Chromium-family browser executable path
  *   TEST_PORT     – override local static server port (default 8765)
  *   DEBUG_PORT    – override Chrome CDP remote debugging port (default 9333)
+ *   Required mode: pass --required to fail instead of skipping if unavailable.
  */
 
 import fs from "node:fs";
@@ -41,13 +42,14 @@ const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const TEST_PORT = Number(process.env.TEST_PORT) || 8765;
 const DEBUG_PORT = Number(process.env.DEBUG_PORT) || 9333;
 const WAIT_MS = 3500; // ms to wait for extension content script after navigation
+const REQUIRED = process.argv.includes("--required");
 
 /** Tracking params the extension should strip (subset to check). */
 const PARAMS_TO_STRIP = ["utm_source", "utm_medium", "fbclid", "gclid"];
 
 /** URL loaded in the browser, with tracking params the extension should clean. */
 const TEST_PATH = "/test/manual-test.html";
-const TEST_PARAMS = "utm_source=test&utm_medium=browser&fbclid=abc123&gclid=xyz789";
+const TEST_PARAMS = "utm_source=test&utm_medium=browser&fbclid=abc123&gclid=xyz789&ref=invite42&ref=chapter2&route=reader";
 
 // ---------------------------------------------------------------------------
 // Logging helpers
@@ -80,7 +82,7 @@ function warn(...args) {
  */
 function findChrome() {
   if (process.env.CHROME_PATH) {
-    return process.env.CHROME_PATH;
+    return fs.existsSync(process.env.CHROME_PATH) ? process.env.CHROME_PATH : null;
   }
 
   const candidates = [
@@ -428,6 +430,16 @@ async function main() {
   let failed = 0;
   let skipped = false;
 
+  function unavailable(reason) {
+    if (REQUIRED) {
+      fail("Required browser integration test unavailable", reason);
+      failed++;
+    } else {
+      warn(`SKIP: ${reason}. Use Chrome for Testing or set CHROME_PATH.`);
+      skipped = true;
+    }
+  }
+
   function check(label, condition, detail = "") {
     if (condition) { pass(label); passed++; }
     else { fail(label, detail); failed++; }
@@ -439,11 +451,9 @@ async function main() {
     // ------------------------------------------------------------------
     const chromePath = findChrome();
     if (!chromePath) {
-      warn(
-        "Chrome not found. Set CHROME_PATH env var or install Chrome.\n" +
-          "         Skipping browser test (exit 0)."
-      );
-      process.exit(0);
+      unavailable("Chrome executable not found");
+      process.exitCode = REQUIRED ? 1 : 0;
+      return;
     }
     log("Chrome:", chromePath);
 
@@ -494,10 +504,16 @@ async function main() {
     chromeProcess.on("exit", (code) => {
       if (code !== null && code !== 0) log(`Chrome exited with code ${code}`);
     });
+    let launchError = null;
+    chromeProcess.on("error", (err) => { launchError = err; });
 
     // Wait for CDP debug port to open
     log(`Waiting for CDP on port ${DEBUG_PORT} ...`);
-    await waitForPort(DEBUG_PORT, 20000);
+    try {
+      await waitForPort(DEBUG_PORT, 20000);
+    } catch (err) {
+      throw launchError || err;
+    }
     // Give the extension service worker time to initialise
     await sleep(2000);
 
@@ -605,6 +621,9 @@ async function main() {
         present ? `param still present in final URL: ${finalUrl}` : ""
       );
     }
+    check("Generic ref and route parameters preserved",
+      JSON.stringify(new URLSearchParams(finalSearch).getAll("ref")) === JSON.stringify(["invite42", "chapter2"]) &&
+      new URLSearchParams(finalSearch).get("route") === "reader");
 
     // ------------------------------------------------------------------
     // 7. Assert: background service worker returns a valid report
@@ -820,6 +839,9 @@ async function main() {
         PARAMS_TO_STRIP.every((param) => !decoySearch.has(param)),
         decoyPageUrl
       );
+      check("Decoy Mode: generic ref and route parameters preserved",
+        JSON.stringify(decoySearch.getAll("ref")) === JSON.stringify(["invite42", "chapter2"]) &&
+        decoySearch.get("route") === "reader");
 
       const decoyReport = await evaluateExtension(`
         getReport(${JSON.stringify(tabId)}).then((report) => ({ ok: true, report }))
@@ -901,19 +923,14 @@ async function main() {
 
   } catch (err) {
     // Graceful skip for known unsupported environments
-    if (
+    if (passed === 0 && failed === 0 &&
       err.message &&
       (err.message.includes("Timed out waiting for port") ||
         err.message.includes("Could not connect to CDP") ||
         err.message.includes("Unpacked extension was not loaded") ||
         err.message.includes("headless"))
     ) {
-      warn(
-        "Could not run an unpacked extension in this headless browser.\n" +
-          "         Use a compatible Chromium-family build or set CHROME_PATH.\n" +
-          "         Skipping browser test (exit 0)."
-      );
-      skipped = true;
+      unavailable(err.message);
     } else {
       console.error(PREFIX, "Unexpected error:", err);
       failed++;
@@ -953,7 +970,7 @@ async function main() {
   // Summary
   // ------------------------------------------------------------------
   if (skipped) {
-    log("Browser test skipped because this browser did not load the unpacked extension.");
+    log("SKIP: Browser test did not run in this environment.");
     process.exit(0);
   }
 

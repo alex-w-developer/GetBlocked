@@ -116,7 +116,6 @@
               "mc_cid",
               "mc_eid",
               "igshid",
-              "ref",
               "affiliate_id"
             ]
           }
@@ -124,7 +123,7 @@
       }
     },
     "condition": {
-      "regexFilter": "[?&](utm_source|utm_medium|utm_campaign|utm_content|utm_term|fbclid|gclid|dclid|mc_cid|mc_eid|igshid|ref|affiliate_id)=",
+      "regexFilter": "[?&](utm_source|utm_medium|utm_campaign|utm_content|utm_term|fbclid|gclid|dclid|mc_cid|mc_eid|igshid|affiliate_id)=",
       "resourceTypes": [
         "main_frame"
       ]

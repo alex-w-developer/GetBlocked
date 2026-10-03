@@ -389,6 +389,20 @@
       ]
     }
   ],
+  "landingUrlChecks": [
+    {
+      "url": "https://app.example.test/invite?ref=invite42",
+      "expectedUrl": "https://app.example.test/invite?ref=invite42"
+    },
+    {
+      "url": "https://app.example.test/view?ref=chapter2&ref=chapter3&utm_source=mail&fbclid=click&route=reader",
+      "expectedUrl": "https://app.example.test/view?ref=chapter2&ref=chapter3&route=reader"
+    },
+    {
+      "url": "https://shop.example.test/item?gclid=click&ref=partner42&color=green",
+      "expectedUrl": "https://shop.example.test/item?ref=partner42&color=green"
+    }
+  ],
   "landingUrls": [
     "https://news.example.test/article?utm_source=newsletter&utm_medium=email&utm_campaign=launch&fbclid=abc",
     "https://shop.example.test/product?gclid=123&affiliate_id=partner42&color=green",

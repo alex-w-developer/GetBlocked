@@ -54,7 +54,7 @@ node --check scripts/test-decoy.mjs
 node --check scripts/browser-test.mjs
 ```
 
-`npm run check` is the complete non-browser validation used by CI. The optional browser harness remains separate because compatible extension support is not available in every headless environment.
+`npm run check` is the complete non-browser validation used by CI. The browser harness runs in a separate required CI job with Chrome for Testing. Local browser runs remain optional because compatible extension support is not available in every environment.
 
 `npm run test:tooling` tests the catalog generator and evidence CLI, including deliberate missed-block and false-positive fixtures in temporary directories. To evaluate another fixture without editing the tracked test set, run `npm run test:evidence -- /path/to/fixture.json`. The fixture format is unchanged. Evidence mismatches exit nonzero while successful runs still print category coverage.
 
@@ -108,7 +108,24 @@ without any npm package.
 The harness uses `--headless=new` and `--load-extension`. Some branded browser
 builds ignore unpacked-extension flags in automation. The script prefers compatible
 local builds, supports an explicit `CHROME_PATH`, and prints `SKIP` with exit code 0
-when the browser cannot load the extension.
+when the browser cannot load the extension in local default mode. Pass `--required`
+(`npm run test:browser -- --required`) to fail instead. CI installs stable Chrome
+for Testing with a commit-pinned [setup-chrome action](https://github.com/browser-actions/setup-chrome),
+sets `CHROME_PATH` from its output, and runs required mode with a ten-minute job
+timeout. Assertion failures always fail, including in local mode.
+
+## URL-cleaning Regression Fixtures
+
+Generic `ref` parameters are preserved: their meaning may be an invitation,
+referral, or application route rather than tracking. Do not add ambiguous names
+to the global list without evidence that removal is safe.
+
+`test/tracker-test-set.json` keeps its existing `landingUrls` coverage summary and
+adds optional `landingUrlChecks` entries with `url` and `expectedUrl`. The evidence
+CLI compares the complete cleaned URL and exits nonzero on mismatches. Include
+positive cleanup examples and negative examples preserving legitimate parameters.
+The browser harness verifies repeated `ref` values and routing parameters survive
+DNR cleanup in both normal and Decoy modes.
 
 ## How The Tracker Catalog Generates DNR Rules
 

@@ -4,7 +4,7 @@ Thanks for helping improve GetBlocked! The project is intentionally small, local
 
 ## Quick Start
 
-1. Fork or clone the repository.
+1. Choose an [open good first issue](https://github.com/alex-w-developer/GetBlocked/issues?q=is%3Aissue+is%3Aopen+label%3A%22good+first+issue%22). Comment when you start so contributors can coordinate, then fork or clone the repository and create a focused branch.
 2. Make a small focused change.
 3. Run the relevant commands:
 
@@ -12,7 +12,7 @@ Thanks for helping improve GetBlocked! The project is intentionally small, local
 npm run check
 ```
 
-4. Open a pull request.
+4. Open a pull request referencing the issue, summarize what changed, and list the checks you actually ran. Draft PRs and questions about setup are welcome.
 
 For tracker-domain PRs, start with [docs/ADDING_TRACKERS.md](docs/ADDING_TRACKERS.md).
 
@@ -60,6 +60,8 @@ npm run check
 ```
 
 For Decoy Mode work, also run `npm run test:browser` when a compatible local Chromium-family browser is available. See [docs/DECOY_MODE.md](docs/DECOY_MODE.md) and [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md).
+
+For release preparation, use the [release checklist](docs/RELEASING.md).
 
 ## How To Add A Tracker Domain
 

@@ -14,6 +14,7 @@ It is built as a small, inspectable Manifest V3 project for people who want a fr
 
 - Blocks a curated starter list of known third-party tracker domains using Chrome `declarativeNetRequest`.
 - Cleans common tracking URL parameters such as `utm_source`, `fbclid`, `gclid`, `dclid`, `mc_cid`, and similar campaign IDs.
+- Preserves generic `ref` parameters used by invitations, referrals, and application routing.
 - Detects visible tracking attempts such as pixels, suspicious scripts, tracking iframes, and tracking links.
 - Shows a compact popup report with:
   - Estimated tracker resources on this page
@@ -117,6 +118,11 @@ The production build avoids debug-only DNR feedback permissions. In normal mode,
 
 ## Contribute In 10 Minutes
 
+New to extensions? Browse the [open good first issues](https://github.com/alex-w-developer/GetBlocked/issues?q=is%3Aissue+is%3Aopen+label%3A%22good+first+issue%22)
+for small documentation, accessibility, and test tasks with starting files and
+acceptance criteria. Read the [contributing guide](CONTRIBUTING.md), comment on an
+issue when you start, and open a focused PR. Draft PRs are welcome.
+
 The easiest way to contribute is to add one tracker domain.
 
 1. Edit [shared/tracker-catalog.json](shared/tracker-catalog.json).
@@ -197,7 +203,11 @@ This launches Chrome with the unpacked extension loaded, navigates to
 No npm packages are required. The test uses only Node.js built-ins and Chrome's
 remote debugging protocol (CDP). Some branded browser builds ignore
 `--load-extension`; if no compatible browser is found or the unpacked extension
-does not load, the test exits with code 0 and prints a skip notice.
+does not load, the local default exits with code 0 and prints `SKIP`.
+
+CI installs Chrome for Testing and runs `npm run test:browser -- --required` in a
+separate `browser` job. Required mode exits nonzero when the browser test cannot
+run. Set `CHROME_PATH` to a compatible executable to run the same check locally.
 
 Override defaults with environment variables:
 
@@ -228,6 +238,7 @@ Then turn on **Decoy Mode (Experimental)** in the popup and reload the fixture. 
 ## Contributor Links
 
 - [Contributing guide](CONTRIBUTING.md)
+- [Release checklist](docs/RELEASING.md)
 - [Adding trackers](docs/ADDING_TRACKERS.md)
 - [Broken sites](docs/BROKEN_SITES.md)
 - [Development guide](docs/DEVELOPMENT.md)
