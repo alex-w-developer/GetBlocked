@@ -424,6 +424,7 @@ async function main() {
   let fileServer = null;
   let browserCdp = null;
   let pageCdp = null;
+  let secondPageCdp = null;
   let popupCdp = null;
   let extensionCdp = null;
   let decoyModeEnabledByTest = false;
@@ -870,6 +871,34 @@ async function main() {
         JSON.stringify({ firstConfiguration, secondConfiguration })
       );
 
+      const secondTarget = await browserCdp.send("Target.createTarget", {
+        url: `http://localhost:${TEST_PORT}${TEST_PATH}?ref=second-site`
+      });
+      await sleep(WAIT_MS);
+      const secondTargets = await cdpHttpGet(DEBUG_PORT, "/json/list");
+      const secondWorker = secondTargets.find(target => target.id === secondTarget.targetId);
+      if (!secondWorker?.webSocketDebuggerUrl) throw new Error("Second site target not found");
+      secondPageCdp = await openCdpSession(secondWorker.webSocketDebuggerUrl);
+      const secondTabId = await evaluateExtension(`(async () => {
+        const tabs = await chrome.tabs.query({});
+        return tabs.find(tab => String(tab.url || '').startsWith('http://localhost:${TEST_PORT}/'))?.id;
+      })()`);
+      const secondReport = await evaluateExtension(`getReport(${JSON.stringify(secondTabId)})`);
+      check("Decoy Mode: global preference applies to a different site",
+        secondReport?.decoyMode === true && secondReport.page?.decoyedRequests > 0,
+        JSON.stringify(secondReport));
+      await browserCdp.send("Target.activateTarget", { targetId: secondTarget.targetId });
+      await popupCdp.send("Page.reload");
+      await sleep(500);
+      const reopenedPopup = await evaluatePopup(`({
+        checked: document.querySelector('#decoy-mode-toggle')?.checked,
+        description: document.querySelector('#decoy-mode-description')?.textContent || '',
+        status: document.querySelector('#status-line')?.textContent || ''
+      })`);
+      check("Popup: reopening for another site retains the global warning",
+        reopenedPopup?.checked === true && reopenedPopup.description.includes("all websites") &&
+        reopenedPopup.status.includes("paused on all websites"), JSON.stringify(reopenedPopup));
+
       await pageCdp.send("Page.navigate", { url: testUrl });
       await sleep(WAIT_MS);
 
@@ -938,6 +967,16 @@ async function main() {
           disabledConfiguration?.enabled === false,
         JSON.stringify({ disabledPopup, disabledConfiguration })
       );
+      const restoredReports = await evaluateExtension(`Promise.all([
+        getReport(${JSON.stringify(tabId)}), getReport(${JSON.stringify(secondTabId)})
+      ])`);
+      const restoredRuleIds = await evaluateExtension(`chrome.declarativeNetRequest.getDisabledRuleIds({
+        rulesetId: 'getblocked_static_rules'
+      })`);
+      check("Decoy Mode: disabling restores catalog blocking on both sites",
+        restoredReports?.length === 2 && restoredReports.every(report => report.decoyMode === false) &&
+        Array.isArray(restoredRuleIds) && !restoredRuleIds.includes(1) && !restoredRuleIds.includes(1000),
+        JSON.stringify({ restoredReports, restoredRuleIds }));
     } else {
       warn(
         "Could not determine extension ID from service-worker target.\n" +
@@ -996,6 +1035,7 @@ async function main() {
     if (popupCdp) { try { popupCdp.close(); } catch { /* ignore */ } }
     if (extensionCdp) { try { extensionCdp.close(); } catch { /* ignore */ } }
     if (pageCdp) { try { pageCdp.close(); } catch { /* ignore */ } }
+    if (secondPageCdp) { try { secondPageCdp.close(); } catch { /* ignore */ } }
     if (browserCdp) { try { browserCdp.close(); } catch { /* ignore */ } }
 
     if (chromeProcess) {
