@@ -351,4 +351,3 @@ test("global Decoy preference reapplies catalog rules on startup and extension u
     await vm.runInContext("setDecoyMode(true)", restarted.context);
   }
 });
-
