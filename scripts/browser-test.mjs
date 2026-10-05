@@ -733,7 +733,9 @@ async function main() {
         experimental:
           document.querySelector(".experimental-badge")?.textContent?.trim(),
         estimateLabel:
-          document.querySelector("#page-blocked")?.previousElementSibling?.textContent?.trim()
+          document.querySelector("#page-blocked")?.previousElementSibling?.textContent?.trim(),
+        statusLive:
+          document.querySelector("#status-line")?.getAttribute("aria-live")
       })`);
       check(
         "Popup: experimental Decoy Mode toggle is present and off by default",
@@ -750,7 +752,12 @@ async function main() {
       check("Popup: global scope is explained before enabling Decoy Mode",
         initialPopup?.scope.includes("all websites") &&
         initialPopup.scope.includes("pauses tracker blocking everywhere") &&
-        initialPopup.description.includes("all websites"), JSON.stringify(initialPopup));
+        initialPopup.description.includes("all websites"), JSON.stringify(initialPopup)
+      );
+      check("Popup: status updates use a polite live region",
+        initialPopup?.statusLive === "polite",
+        JSON.stringify(initialPopup)
+      );
 
       const tabId = await evaluateExtension(`
         (async () => {
