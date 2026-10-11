@@ -4,6 +4,8 @@ The easiest first PR is adding one well-scoped tracker domain and one test fixtu
 
 This page walks through the exact tracker-domain PR workflow.
 
+For reported phishing, malware, or other unsafe domains, use the separate [community-list guide](UNSAFE_DOMAINS.md). Its source is `shared/unsafe-domains.json`; it is opt-in and independent of the tracker catalog and Decoy Mode.
+
 ## 1. Edit The Tracker Catalog
 
 Open [shared/tracker-catalog.json](../shared/tracker-catalog.json).

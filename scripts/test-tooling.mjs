@@ -8,6 +8,7 @@ import { fileURLToPath } from "node:url";
 import test from "node:test";
 import { findCatalogOverlaps } from "./catalog-overlaps.mjs";
 import { selectExtensionTarget } from "./browser-targets.mjs";
+import { validateUnsafeDomains } from "./unsafe-domains.mjs";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const readJson = (file) => JSON.parse(fs.readFileSync(path.join(root, file), "utf8"));
@@ -28,10 +29,11 @@ function run(script, args = []) {
 function generatorFixture(t, trackers) {
   const dir = tempDir(t);
   for (const folder of ["scripts", "shared", "rules"]) fs.mkdirSync(path.join(dir, folder));
-  for (const file of ["generate-rules.mjs", "catalog-overlaps.mjs"]) {
+  for (const file of ["generate-rules.mjs", "catalog-overlaps.mjs", "unsafe-domains.mjs"]) {
     fs.copyFileSync(path.join(root, "scripts", file), path.join(dir, "scripts", file));
   }
   fs.writeFileSync(path.join(dir, "shared/tracking-params.json"), '["utm_source"]');
+  fs.writeFileSync(path.join(dir, "shared/unsafe-domains.json"), '{"domains":[]}');
   fs.writeFileSync(path.join(dir, "shared/tracker-catalog.json"), JSON.stringify({ trackers }));
   return dir;
 }
@@ -154,6 +156,8 @@ test("JSON checker identifies malformed and missing files and preserves valid ou
   const files = [
     "manifest.json",
     "rules/rules.json",
+    "rules/unsafe.json",
+    "shared/unsafe-domains.json",
     "shared/tracker-catalog.json",
     "shared/tracking-params.json",
     "test/tracker-test-set.json",
@@ -168,7 +172,7 @@ test("JSON checker identifies malformed and missing files and preserves valid ou
   const checker = path.join(root, "scripts/check-json.mjs");
   const valid = run(checker, [dir]);
   assert.equal(valid.status, 0, valid.output);
-  assert.match(valid.output, /JSON OK \(6 files\)/);
+  assert.match(valid.output, /JSON OK \(8 files\)/);
 
   fs.writeFileSync(path.join(dir, "manifest.json"), "{ invalid JSON }\n");
   const malformed = run(checker, [dir]);
@@ -270,12 +274,7 @@ test("intentional overlaps require a nonempty reason tied to an existing parent"
 });
 
 test("generator rejects unexplained overlaps before writing and retains documented entries deterministically", (t) => {
-  const dir = tempDir(t);
-  for (const folder of ["scripts", "shared", "rules"]) fs.mkdirSync(path.join(dir, folder));
-  for (const file of ["generate-rules.mjs", "catalog-overlaps.mjs"]) {
-    fs.copyFileSync(path.join(root, "scripts", file), path.join(dir, "scripts", file));
-  }
-  fs.writeFileSync(path.join(dir, "shared/tracking-params.json"), '["utm_source"]');
+  const dir = generatorFixture(t, []);
   const catalogPath = path.join(dir, "shared/tracker-catalog.json");
   const trackers = [entry("example.com"), entry("a.example.com")];
   fs.writeFileSync(catalogPath, JSON.stringify({ trackers }));
@@ -314,9 +313,7 @@ test("catalog audit retains only explained overlaps and their category mappings"
     assert.deepEqual(actual, expected);
   }
 });
-test("global Decoy preference reapplies catalog rules on startup and extension update", async () => {
-  const localData = {};
-  function startBackground() {
+function startBackground(localData = {}) {
     const listeners = {};
     const event = name => ({ addListener: listener => { listeners[name] = listener; } });
     const area = data => ({
@@ -325,15 +322,25 @@ test("global Decoy preference reapplies catalog rules on startup and extension u
       remove: (keys, callback) => { for (const key of keys) delete data[key]; callback(); }
     });
     const disabledRules = new Set();
+    const enabledRulesets = new Set(["getblocked_static_rules"]);
+    const warnings = [];
     let rejectRuleUpdate = false;
+    let rejectStorage = false;
     const context = vm.createContext({
-      console, URL, crypto: globalThis.crypto,
+      console: { ...console, warn: (...args) => warnings.push(args) }, URL, crypto: globalThis.crypto,
       chrome: {
-        runtime: { onInstalled: event("installed"), onStartup: event("startup"), onMessage: event("message") },
+        runtime: { id: "test-extension", getURL: file => `chrome-extension://test-extension/${file}`,
+          onInstalled: event("installed"), onStartup: event("startup"), onMessage: event("message") },
         storage: { local: area(localData), session: area({}) },
         action: { setBadgeBackgroundColor: () => {}, setBadgeText: (_, callback) => callback(), setTitle: (_, callback) => callback() },
         declarativeNetRequest: {
           setExtensionActionOptions: (_, callback) => callback(),
+          getEnabledRulesets: async () => [...enabledRulesets],
+          updateEnabledRulesets: async ({ enableRulesetIds, disableRulesetIds }) => {
+            if (rejectRuleUpdate) throw new Error("Simulated rule failure");
+            for (const id of enableRulesetIds) enabledRulesets.add(id);
+            for (const id of disableRulesetIds) enabledRulesets.delete(id);
+          },
           updateStaticRules: async ({ disableRuleIds, enableRuleIds }) => {
             if (rejectRuleUpdate) throw new Error("Simulated rule failure");
             for (const id of disableRuleIds) disabledRules.add(id);
@@ -344,25 +351,38 @@ test("global Decoy preference reapplies catalog rules on startup and extension u
         tabs: { onRemoved: event("removed") }
       }
     });
+    const normalSet = context.chrome.storage.local.set;
+    context.chrome.storage.local.set = (items, callback) => {
+      if (rejectStorage && Object.hasOwn(items, "getblockedUnsafeDomains")) {
+        context.chrome.runtime.lastError = { message: "Simulated storage failure" };
+        callback();
+        delete context.chrome.runtime.lastError;
+      } else normalSet(items, callback);
+    };
     context.importScripts = file => vm.runInContext(fs.readFileSync(path.join(root, file), "utf8"), context);
     vm.runInContext(fs.readFileSync(path.join(root, "background.js"), "utf8"), context);
-    return { context, disabledRules,
+    return { context, disabledRules, enabledRulesets, warnings,
       rejectRules: () => { rejectRuleUpdate = true; },
+      rejectStorage: () => { rejectStorage = true; },
+      message: (message, sender) => new Promise(resolve => listeners.message(message, sender, resolve)),
       trigger: async name => { listeners[name](); await vm.runInContext("updateQueue", context); } };
-  }
-  const first = startBackground();
+}
+
+test("global Decoy preference reapplies catalog rules on startup and extension update", async () => {
+  const localData = {};
+  const first = startBackground(localData);
   await vm.runInContext("setDecoyMode(true)", first.context);
   assert.equal(localData.getblockedDecoyMode, true);
   assert.deepEqual([...first.disabledRules], [1]);
   for (const eventName of ["startup", "installed"]) {
-    const restarted = startBackground();
+    const restarted = startBackground(localData);
     await restarted.trigger(eventName);
     assert.equal(localData.getblockedDecoyMode, true);
     assert.deepEqual([...restarted.disabledRules], [1]);
     await vm.runInContext("setDecoyMode(false)", restarted.context);
     assert.equal(localData.getblockedDecoyMode, false);
     assert.equal(restarted.disabledRules.size, 0);
-    const normalRestart = startBackground();
+    const normalRestart = startBackground(localData);
     normalRestart.disabledRules.add(1);
     await normalRestart.trigger(eventName);
     assert.equal(normalRestart.disabledRules.size, 0);
@@ -372,4 +392,103 @@ test("global Decoy preference reapplies catalog rules on startup and extension u
     assert.equal(normalRestart.disabledRules.size, 0);
     await vm.runInContext("setDecoyMode(true)", restarted.context);
   }
+});
+
+test("community list rejects malformed, duplicate and broad shared-service domains", () => {
+  assert.deepEqual(validateUnsafeDomains({ domains: ["b.example.test", "a.example.test"] }),
+    ["a.example.test", "b.example.test"]);
+  for (const domain of ["https://example.test/path", "*.example.test", "Example.test", " example.test",
+    "example.test:443", "localhost", "127.0.0.1", "bad..test", "-bad.test"]) {
+    assert.throws(() => validateUnsafeDomains({ domains: [domain] }), /Invalid unsafe domain/);
+  }
+  for (const domain of ["google.com", "paypal.com", "github.io", "vercel.app", "pages.dev", "replit.app"]) {
+    assert.throws(() => validateUnsafeDomains({ domains: [domain] }), /broad high-breakage/);
+  }
+  assert.throws(() => validateUnsafeDomains({ domains: ["a.example.test", "a.example.test"] }), /Duplicate/);
+  assert.throws(() => validateUnsafeDomains({}), /domains array/);
+});
+
+test("invalid community input preserves all generated files", (t) => {
+  const dir = generatorFixture(t, [entry("tracker.example.test")]);
+  fs.writeFileSync(path.join(dir, "shared/unsafe-domains.json"), '{"domains":["vercel.app"]}');
+  const outputs = ["rules/rules.json", "rules/unsafe.json", "shared/config.js"];
+  for (const output of outputs) fs.writeFileSync(path.join(dir, output), "sentinel\n");
+  const result = run(path.join(dir, "scripts/generate-rules.mjs"));
+  assert.equal(result.status, 1, result.output);
+  assert.match(result.output, /broad high-breakage unsafe domain: vercel\.app/);
+  for (const output of outputs) assert.equal(fs.readFileSync(path.join(dir, output), "utf8"), "sentinel\n");
+});
+
+test("community source generates an opt-in ruleset outside tracker and Decoy scope", () => {
+  const source = readJson("shared/unsafe-domains.json");
+  const domains = validateUnsafeDomains(source);
+  assert.ok(domains.length > 0);
+  const resource = readJson("manifest.json").declarative_net_request.rule_resources
+    .find(r => r.id === "getblocked_unsafe_domains");
+  assert.equal(resource.enabled, false);
+  const [rule] = readJson(resource.path);
+  assert.deepEqual(rule.condition.requestDomains, domains);
+  assert.equal(rule.action.type, "block");
+  assert.ok(rule.priority > readJson("rules/rules.json").find(r => r.id === 1000).priority);
+  assert.ok(rule.condition.resourceTypes.includes("main_frame"));
+  assert.ok(rule.condition.resourceTypes.includes("xmlhttprequest"));
+  assert.equal(rule.condition.domainType, undefined);
+  const context = vm.createContext({});
+  vm.runInContext(fs.readFileSync(path.join(root, "shared/config.js"), "utf8"), context);
+  for (const domain of domains) assert.ok(!context.GetBlockedConfig.TRACKER_DOMAINS.includes(domain));
+});
+
+test("community preference survives startup/update and stays independent of Decoy Mode", async () => {
+  const localData = {};
+  const initial = startBackground(localData);
+  await initial.trigger("installed");
+  assert.equal((await vm.runInContext("getReport(1)", initial.context)).unsafeDomainBlocking, false);
+  await vm.runInContext("setUnsafeDomainBlocking(true)", initial.context);
+  assert.equal(localData.getblockedUnsafeDomains, true);
+  for (const eventName of ["startup", "installed"]) {
+    const restarted = startBackground(localData);
+    await restarted.trigger(eventName);
+    assert.ok(restarted.enabledRulesets.has("getblocked_unsafe_domains"));
+    await vm.runInContext("setDecoyMode(true)", restarted.context);
+    assert.ok(restarted.enabledRulesets.has("getblocked_unsafe_domains"));
+    assert.deepEqual([...restarted.disabledRules], [1]);
+    await vm.runInContext("setUnsafeDomainBlocking(false)", restarted.context);
+    assert.ok(restarted.enabledRulesets.has("getblocked_static_rules"));
+    assert.equal(restarted.enabledRulesets.has("getblocked_unsafe_domains"), false);
+    assert.deepEqual([...restarted.disabledRules], [1]);
+    const disabledRestart = startBackground(localData);
+    await disabledRestart.trigger(eventName);
+    assert.equal(disabledRestart.enabledRulesets.has("getblocked_unsafe_domains"), false);
+    await vm.runInContext("(async () => { await setDecoyMode(false); await setUnsafeDomainBlocking(true); })()", restarted.context);
+  }
+});
+
+test("community setting rejects page senders and malformed values and handles update failures", async () => {
+  const popupSender = { id: "test-extension", url: "chrome-extension://test-extension/popup/popup.html" };
+  const localData = {};
+  const background = startBackground(localData);
+  for (const sender of [{}, { id: "other", url: popupSender.url },
+    { id: "test-extension", url: "https://site.example.test/" }]) {
+    const response = await background.message({ type: "SET_GETBLOCKED_UNSAFE_DOMAINS", enabled: true }, sender);
+    assert.equal(response.ok, false);
+  }
+  for (const enabled of ["true", 1, null, undefined]) {
+    const response = await background.message({ type: "SET_GETBLOCKED_UNSAFE_DOMAINS", enabled }, popupSender);
+    assert.equal(response.ok, false);
+  }
+  assert.equal(localData.getblockedUnsafeDomains, undefined);
+  const enabledResponse = await background.message({ type: "SET_GETBLOCKED_UNSAFE_DOMAINS", enabled: true }, popupSender);
+  assert.equal(enabledResponse.ok, true);
+  assert.equal(enabledResponse.configuration.enabled, true);
+  background.rejectRules();
+  const failed = await background.message({ type: "SET_GETBLOCKED_UNSAFE_DOMAINS", enabled: false }, popupSender);
+  assert.equal(failed.ok, false);
+  assert.equal(localData.getblockedUnsafeDomains, true);
+  assert.ok(background.enabledRulesets.has("getblocked_unsafe_domains"));
+  assert.equal(background.warnings.length, 1);
+  const storageFailure = startBackground({});
+  storageFailure.rejectStorage();
+  await assert.rejects(vm.runInContext("setUnsafeDomainBlocking(true)", storageFailure.context),
+    error => error.message === "Simulated storage failure");
+  assert.equal(storageFailure.enabledRulesets.has("getblocked_unsafe_domains"), false);
 });

@@ -37,6 +37,19 @@
         </p>
       </section>
 
+      <section class="mode-card" aria-labelledby="unsafe-domains-title">
+        <div class="mode-heading">
+          <span class="mode-title" id="unsafe-domains-title">Community domain list</span>
+          <label class="switch">
+            <span class="sr-only">Block community-reported unsafe domains on all websites</span>
+            <input id="unsafe-domains-toggle" type="checkbox" role="switch" aria-describedby="unsafe-domains-scope unsafe-domains-description" disabled>
+            <span class="switch-track" aria-hidden="true"></span>
+          </label>
+        </div>
+        <p id="unsafe-domains-scope">Optional, unverified reports of unsafe domains. May block legitimate sites. Applies to visits and requests on all websites, including in Decoy Mode.</p>
+        <p id="unsafe-domains-description">Loading list setting…</p>
+      </section>
+
       <section class="stats" aria-label="Tracker statistics">
         <div class="stat">
           <span class="stat-label">Estimated tracker resources on this page</span>

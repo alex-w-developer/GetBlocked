@@ -2,15 +2,19 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { findCatalogOverlaps } from "./catalog-overlaps.mjs";
+import { validateUnsafeDomains } from "./unsafe-domains.mjs";
 
 const rootDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const catalogPath = path.join(rootDir, "shared", "tracker-catalog.json");
 const trackingParamsPath = path.join(rootDir, "shared", "tracking-params.json");
 const rulesPath = path.join(rootDir, "rules", "rules.json");
 const configPath = path.join(rootDir, "shared", "config.js");
+const unsafeDomainsPath = path.join(rootDir, "shared", "unsafe-domains.json");
+const unsafeRulesPath = path.join(rootDir, "rules", "unsafe.json");
 
 const BLOCK_RULE_ID = 1;
 const CLEAN_URL_RULE_ID = 1000;
+const UNSAFE_DOMAIN_RULE_ID = 2000;
 const BLOCK_RESOURCE_TYPES = [
   "csp_report",
   "font",
@@ -176,6 +180,7 @@ function buildConfig({ domains, categories, trackingParams }) {
 const catalog = readJson(catalogPath);
 const trackingParams = readJson(trackingParamsPath);
 assertValidCatalog(catalog);
+const unsafeDomains = validateUnsafeDomains(readJson(unsafeDomainsPath));
 const overlaps = findCatalogOverlaps(catalog.trackers);
 for (const { domain, parent, reason } of overlaps) {
   if (reason) {
@@ -195,10 +200,22 @@ const trackers = catalog.trackers.map((tracker) => ({
 const domains = uniqueSorted(trackers.map((tracker) => tracker.domain));
 const categories = buildCategories(trackers);
 const rules = buildRules(domains, trackingParams);
+const unsafeRules = unsafeDomains.length ? [{
+  id: UNSAFE_DOMAIN_RULE_ID,
+  // Blocking takes precedence over URL cleanup, including on navigation.
+  priority: 3,
+  action: { type: "block" },
+  condition: {
+    requestDomains: unsafeDomains,
+    resourceTypes: ["main_frame", ...BLOCK_RESOURCE_TYPES]
+  }
+}] : [];
 
 writeJson(rulesPath, rules);
 fs.writeFileSync(configPath, buildConfig({ domains, categories, trackingParams }));
+writeJson(unsafeRulesPath, unsafeRules);
 
 console.log(`Generated ${rulesPath}`);
 console.log(`Generated ${configPath}`);
 console.log(`Tracker domains: ${domains.length}`);
+console.log(`Generated ${unsafeRulesPath} (${unsafeDomains.length} optional community domains)`);

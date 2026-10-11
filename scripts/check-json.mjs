@@ -7,6 +7,8 @@ const rootDir = process.argv[2] ? path.resolve(process.argv[2]) : defaultRootDir
 const files = [
   "manifest.json",
   "rules/rules.json",
+  "rules/unsafe.json",
+  "shared/unsafe-domains.json",
   "shared/tracker-catalog.json",
   "shared/tracking-params.json",
   "test/tracker-test-set.json",

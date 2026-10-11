@@ -39,6 +39,11 @@
         "id": "getblocked_static_rules",
         "enabled": true,
         "path": "rules/rules.json"
+      },
+      {
+        "id": "getblocked_unsafe_domains",
+        "enabled": false,
+        "path": "rules/unsafe.json"
       }
     ]
   },

@@ -13,11 +13,14 @@ const sourceFiles = [
   "popup/popup.css",
   "popup/popup.js",
   "rules/rules.json",
+  "rules/unsafe.json",
+  "shared/unsafe-domains.json",
   "shared/config.js",
   "shared/decoy-transform.js",
   "shared/tracker-catalog.json",
   "shared/tracking-params.json",
   "scripts/generate-rules.mjs",
+  "scripts/unsafe-domains.mjs",
   "scripts/evaluate-test-set.mjs",
   "test/tracker-test-set.json"
 ];

@@ -12,6 +12,8 @@ const decoyModeToggleEl = document.querySelector("#decoy-mode-toggle");
 const decoyModeDescriptionEl = document.querySelector(
   "#decoy-mode-description"
 );
+const unsafeDomainsToggleEl = document.querySelector("#unsafe-domains-toggle");
+const unsafeDomainsDescriptionEl = document.querySelector("#unsafe-domains-description");
 
 function formatCount(value) {
   return new Intl.NumberFormat().format(Number(value) || 0);
@@ -101,6 +103,8 @@ function renderReport(report) {
   }
 
   decoyModeToggleEl.checked = decoyMode === true;
+  renderUnsafeDomainSetting(report.unsafeDomainBlocking === true);
+  unsafeDomainsToggleEl.disabled = false;
   footerEl.classList.toggle("is-warning", decoyMode === true);
 
   if (decoyMode) {
@@ -118,6 +122,43 @@ function renderReport(report) {
   }
 }
 
+function renderUnsafeDomainSetting(enabled) {
+  unsafeDomainsToggleEl.checked = enabled;
+  unsafeDomainsDescriptionEl.textContent = enabled
+    ? "On: listed domains and their subdomains are blocked. Tracker statistics do not count these blocks."
+    : "Off: the community list is disabled. It is bundled locally and is not updated automatically.";
+}
+
+function setUnsafeDomainBlocking(enabled) {
+  return new Promise((resolve, reject) => {
+    chrome.runtime.sendMessage(
+      { type: "SET_GETBLOCKED_UNSAFE_DOMAINS", enabled },
+      (response) => {
+        const error = chrome.runtime.lastError;
+        if (error || !response?.ok) {
+          reject(new Error(error?.message || response?.error || "Unable to update the community list"));
+          return;
+        }
+        resolve(response.configuration);
+      }
+    );
+  });
+}
+
+async function handleUnsafeDomainsChange() {
+  const enabled = unsafeDomainsToggleEl.checked;
+  unsafeDomainsToggleEl.disabled = true;
+  try {
+    const configuration = await setUnsafeDomainBlocking(enabled);
+    renderUnsafeDomainSetting(configuration.enabled);
+  } catch (error) {
+    renderUnsafeDomainSetting(!enabled);
+    statusLineEl.textContent = "Community list could not be updated. Try again.";
+  } finally {
+    unsafeDomainsToggleEl.disabled = false;
+  }
+}
+
 async function loadReport() {
   try {
     const tab = await queryActiveTab();
@@ -129,6 +170,8 @@ async function loadReport() {
     renderReport(report);
   } catch (error) {
     statusLineEl.textContent = "Open a web page to see a local report.";
+    unsafeDomainsToggleEl.disabled = true;
+    unsafeDomainsDescriptionEl.textContent = "List setting unavailable. Reopen the popup to try again.";
   }
 }
 
@@ -149,3 +192,4 @@ async function handleDecoyModeChange() {
 
 document.addEventListener("DOMContentLoaded", loadReport);
 decoyModeToggleEl.addEventListener("change", handleDecoyModeChange);
+unsafeDomainsToggleEl.addEventListener("change", handleUnsafeDomainsChange);

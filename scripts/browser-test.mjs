@@ -14,6 +14,8 @@
  *      one session profile, counts modified requests, and avoids false blocks.
  *   5. Turning Decoy Mode off through the popup restores normal blocking.
  *   6. No uncaught runtime exceptions are thrown by the extension.
+ *   7. The optional community list blocks local test traffic, including in
+ *      Decoy Mode, without ever connecting to the contributor's domains.
  *
  * Usage:
  *   node scripts/browser-test.mjs
@@ -52,6 +54,7 @@ const PARAMS_TO_STRIP = ["utm_source", "utm_medium", "fbclid", "gclid"];
 /** URL loaded in the browser, with tracking params the extension should clean. */
 const TEST_PATH = "/test/manual-test.html";
 const TEST_PARAMS = "utm_source=test&utm_medium=browser&fbclid=abc123&gclid=xyz789&ref=invite42&ref=chapter2&route=reader";
+const COMMUNITY_HOST = JSON.parse(fs.readFileSync(path.join(ROOT, "shared/unsafe-domains.json"), "utf8")).domains[0];
 
 // ---------------------------------------------------------------------------
 // Logging helpers
@@ -489,6 +492,9 @@ async function main() {
       "--disable-popup-blocking",
       "--allow-running-insecure-content",
       "--headless=new",
+      // Resolve these exact listed hosts only to the local fixture server.
+      `--host-resolver-rules=MAP ${COMMUNITY_HOST} 127.0.0.1, MAP child.${COMMUNITY_HOST} 127.0.0.1`,
+      `--proxy-bypass-list=${COMMUNITY_HOST};child.${COMMUNITY_HOST}`,
       ...(process.env.CHROME_NO_SANDBOX === "1" ? ["--no-sandbox"] : []),
     ];
 
@@ -759,6 +765,46 @@ async function main() {
         JSON.stringify(initialPopup)
       );
 
+      const initialCommunity = await evaluatePopup(`({
+        checked: document.querySelector('#unsafe-domains-toggle')?.checked,
+        disabled: document.querySelector('#unsafe-domains-toggle')?.disabled,
+        scope: document.querySelector('#unsafe-domains-scope')?.textContent || ''
+      })`);
+      check("Community list: popup is off by default and explains unverified reports",
+        initialCommunity?.checked === false && initialCommunity.disabled === false &&
+        initialCommunity.scope.includes('unverified') && initialCommunity.scope.includes('Decoy Mode'),
+        JSON.stringify(initialCommunity));
+      const communityUrl = `http://${COMMUNITY_HOST}:${TEST_PORT}/package.json`;
+      const childCommunityUrl = `http://child.${COMMUNITY_HOST}:${TEST_PORT}/package.json`;
+      const localFetch = url => evaluatePopup(`(async () => {
+        try {
+          const response = await fetch(${JSON.stringify(url)});
+          return { loaded: response.ok, name: (await response.json()).name };
+        } catch { return { loaded: false }; }
+      })()`);
+      const allowedCommunity = await localFetch(communityUrl);
+      check("Community list: disabled rules allow the locally mapped host",
+        allowedCommunity?.loaded === true && allowedCommunity.name === 'getblocked', JSON.stringify(allowedCommunity));
+      const enabledCommunity = await evaluatePopup(`(async () => {
+        const toggle = document.querySelector('#unsafe-domains-toggle');
+        toggle.click();
+        await new Promise(resolve => setTimeout(resolve, 400));
+        return { checked: toggle.checked, disabled: toggle.disabled };
+      })()`);
+      const communityRulesets = await evaluateExtension(`chrome.declarativeNetRequest.getEnabledRulesets()`);
+      check("Community list: popup enables the separate ruleset",
+        enabledCommunity?.checked === true && enabledCommunity.disabled === false &&
+        communityRulesets?.includes('getblocked_unsafe_domains') && communityRulesets.includes('getblocked_static_rules'),
+        JSON.stringify({ enabledCommunity, communityRulesets }));
+      check("Community list: blocks listed hosts and subdomains",
+        (await localFetch(communityUrl))?.loaded === false && (await localFetch(childCommunityUrl))?.loaded === false);
+      const blockedNavigation = await pageCdp.send("Page.navigate", { url: `${communityUrl}?utm_source=test` });
+      check("Community list: blocks top-level visits before URL cleanup",
+        blockedNavigation.errorText === 'net::ERR_BLOCKED_BY_CLIENT', JSON.stringify(blockedNavigation));
+      // Restore the original page for the existing tracker and Decoy checks.
+      await pageCdp.send("Page.navigate", { url: testUrl });
+      await sleep(WAIT_MS);
+
       const tabId = await evaluateExtension(`
         (async () => {
           const tabs = await chrome.tabs.query({});
@@ -857,6 +903,9 @@ async function main() {
           !disabledRuleIds.includes(1000),
         JSON.stringify(disabledRuleIds)
       );
+      check("Community list: remains enabled and blocks locally mapped requests during Decoy Mode",
+        (await evaluateExtension(`getUnsafeDomainBlocking()`)) === true &&
+        (await localFetch(communityUrl))?.loaded === false);
 
       const firstConfiguration = await evaluateExtension(`
         getDecoyConfiguration().then((configuration) => ({
@@ -984,6 +1033,18 @@ async function main() {
         restoredReports?.length === 2 && restoredReports.every(report => report.decoyMode === false) &&
         Array.isArray(restoredRuleIds) && !restoredRuleIds.includes(1) && !restoredRuleIds.includes(1000),
         JSON.stringify({ restoredReports, restoredRuleIds }));
+      await popupCdp.send("Page.reload");
+      await sleep(500);
+      const restoredCommunity = await evaluatePopup(`document.querySelector('#unsafe-domains-toggle')?.checked`);
+      check("Community list: reopening popup reflects the saved enabled state", restoredCommunity === true);
+      await evaluatePopup(`(async () => {
+        document.querySelector('#unsafe-domains-toggle').click();
+        await new Promise(resolve => setTimeout(resolve, 400));
+      })()`);
+      const disabledCommunity = await localFetch(communityUrl);
+      check("Community list: disabling restores access without disabling tracker rules",
+        disabledCommunity?.loaded === true && disabledCommunity.name === 'getblocked' &&
+        (await evaluateExtension(`chrome.declarativeNetRequest.getEnabledRulesets()`))?.includes('getblocked_static_rules'));
     } else {
       warn(
         "Could not determine extension ID from service-worker target.\n" +

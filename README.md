@@ -137,6 +137,8 @@ For common extension and tracking terms, see the [GetBlocked! Glossary](docs/GLO
 
 ## How The Tracker Catalog Works
 
+An additional **Community domain list** switch is off by default. It enables 67 community-reported unsafe domains from Dev2023-Op's fork. These reports are unverified and may block legitimate sites. When enabled, the list blocks visits and requests independently of Decoy Mode. It is bundled locally and does not update automatically. See [the community-list guide](docs/UNSAFE_DOMAINS.md) for provenance, limitations, and the exact file to edit.
+
 Tracker domains are maintained in [shared/tracker-catalog.json](shared/tracker-catalog.json).
 
 Each tracker entry includes:
@@ -158,6 +160,7 @@ This updates:
 
 - [rules/rules.json](rules/rules.json), used by Chrome `declarativeNetRequest`.
 - [shared/config.js](shared/config.js), used by page detection and to scope Decoy Mode to the tracker catalog.
+- [rules/unsafe.json](rules/unsafe.json), the separate optional community ruleset generated from [shared/unsafe-domains.json](shared/unsafe-domains.json).
 
 Do not edit generated rules/config by hand unless you also update the generator or source catalog.
 
