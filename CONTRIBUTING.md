@@ -16,6 +16,8 @@ npm run check
 
 For tracker-domain PRs, start with [docs/ADDING_TRACKERS.md](docs/ADDING_TRACKERS.md).
 
+For a separate list of reported unsafe domains, use [docs/UNSAFE_DOMAINS.md](docs/UNSAFE_DOMAINS.md). Edit `shared/unsafe-domains.json` and run `npm run generate:rules`; the generated `rules/unsafe.json` is registered in the manifest and controlled by the opt-in popup switch. Include evidence and report dates with new reports.
+
 ## Local Development
 
 Load the extension locally:

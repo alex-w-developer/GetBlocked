@@ -13,6 +13,8 @@ const PENDING_NAVIGATION_KEY = "getblockedPendingNavigation";
 const OBSOLETE_TOTALS_KEY = "getblockedTotals";
 const DECOY_MODE_KEY = "getblockedDecoyMode";
 const DECOY_SESSION_PROFILE_KEY = "getblockedDecoySessionProfile";
+const UNSAFE_DOMAINS_KEY = "getblockedUnsafeDomains";
+const UNSAFE_RULESET_ID = "getblocked_unsafe_domains";
 
 let updateQueue = Promise.resolve();
 
@@ -194,6 +196,35 @@ function createFakeSessionProfile() {
 async function getDecoyMode() {
   const result = await storageGet(DECOY_MODE_KEY);
   return result[DECOY_MODE_KEY] === true;
+}
+
+async function getUnsafeDomainBlocking() {
+  const rulesets = await chrome.declarativeNetRequest.getEnabledRulesets();
+  return rulesets.includes(UNSAFE_RULESET_ID);
+}
+
+async function applyUnsafeDomainRuleState(enabled) {
+  await chrome.declarativeNetRequest.updateEnabledRulesets({
+    enableRulesetIds: enabled ? [UNSAFE_RULESET_ID] : [],
+    disableRulesetIds: enabled ? [] : [UNSAFE_RULESET_ID]
+  });
+}
+
+async function syncUnsafeDomainRuleStateFromStorage() {
+  const result = await storageGet(UNSAFE_DOMAINS_KEY);
+  await applyUnsafeDomainRuleState(result[UNSAFE_DOMAINS_KEY] === true);
+}
+
+async function setUnsafeDomainBlocking(enabled) {
+  const previous = await getUnsafeDomainBlocking();
+  await applyUnsafeDomainRuleState(enabled);
+  try {
+    await storageSet({ [UNSAFE_DOMAINS_KEY]: enabled });
+  } catch (error) {
+    await applyUnsafeDomainRuleState(previous);
+    throw error;
+  }
+  return { enabled };
 }
 
 async function ensureDecoySessionProfile() {
@@ -511,12 +542,29 @@ async function getReport(tabId) {
   return {
     page: pageStats,
     decoyMode,
+    unsafeDomainBlocking: await getUnsafeDomainBlocking(),
     localOnly: true,
     counterMode: "local_estimate"
   };
 }
 
 function handleMessage(message, sender, sendResponse) {
+  if (message?.type === "SET_GETBLOCKED_UNSAFE_DOMAINS") {
+    if (sender.id !== chrome.runtime.id ||
+        sender.url !== chrome.runtime.getURL("popup/popup.html") ||
+        typeof message.enabled !== "boolean") {
+      sendResponse({ ok: false, error: "Invalid community-list setting request" });
+      return false;
+    }
+    queueUpdate(() => setUnsafeDomainBlocking(message.enabled))
+      .then((configuration) => sendResponse({ ok: true, configuration }))
+      .catch((error) => sendResponse({
+        ok: false,
+        error: error.message || "Unable to update the community list"
+      }));
+    return true;
+  }
+
   if (message?.type === "GETBLOCKED_PAGE_SIGNALS") {
     const tabId = sender.tab?.id;
     const signals = message.payload || {};
@@ -579,6 +627,7 @@ chrome.runtime.onInstalled.addListener(() => {
   queueUpdate(async () => {
     await clearTransientLocalData();
     await syncDecoyRuleStateFromStorage();
+    await syncUnsafeDomainRuleStateFromStorage();
   });
   configureActionBadge();
 });
@@ -587,6 +636,7 @@ chrome.runtime.onStartup.addListener(() => {
   queueUpdate(async () => {
     await clearTransientLocalData();
     await syncDecoyRuleStateFromStorage();
+    await syncUnsafeDomainRuleStateFromStorage();
   });
   configureActionBadge();
 });

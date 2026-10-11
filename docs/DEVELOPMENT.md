@@ -29,6 +29,8 @@ There are no runtime npm dependencies. The npm scripts use Node.js built-ins.
 - `shared/config.js`: generated config for content script/category detection.
 - `shared/decoy-transform.js`: reusable, locally tested request-field transformation helpers.
 - `rules/rules.json`: generated Chrome DNR rules.
+- `shared/unsafe-domains.json`: optional community domain list and source attribution.
+- `rules/unsafe.json`: generated community blocklist, disabled by default and independent of Decoy Mode.
 - `scripts/generate-rules.mjs`: catalog-to-rules generator.
 - `scripts/evaluate-test-set.mjs`: local ruleset fixture test.
 - `scripts/test-decoy.mjs`: Decoy Mode transformation and transaction-safety assertions.
@@ -58,7 +60,7 @@ node --check scripts/browser-test.mjs
 
 `npm run test:tooling` tests the catalog generator and evidence CLI, including deliberate missed-block and false-positive fixtures in temporary directories. To evaluate another fixture without editing the tracked test set, run `npm run test:evidence -- /path/to/fixture.json`. The fixture format is unchanged. Evidence mismatches exit nonzero while successful runs still print category coverage.
 
-When intentionally changing generated rules, review and stage `rules/rules.json` and `shared/config.js` before running the full check: `check:generated` compares the regenerated working files with the Git index.
+When intentionally changing generated rules, review and stage `rules/rules.json`, `rules/unsafe.json`, and `shared/config.js` before running the full check: `check:generated` compares the regenerated working files with the Git index. See [the community-list guide](UNSAFE_DOMAINS.md) for its popup control, saved preference, and contribution workflow. Browser coverage also checks listed hosts and subdomains, top-level navigation with tracking parameters, Decoy Mode independence, and access restoration against the local fixture server.
 
 ## Browser Test
 
