@@ -15,16 +15,32 @@ const files = [
   "package.json"
 ];
 
+const parsed = {};
+let failed = false;
+
 for (const file of files) {
   try {
-    JSON.parse(fs.readFileSync(path.join(rootDir, file), "utf8"));
+    parsed[file] = JSON.parse(fs.readFileSync(path.join(rootDir, file), "utf8"));
   } catch (error) {
     console.error(`JSON validation failed for ${file}: ${error.message}`);
-    process.exitCode = 1;
+    failed = true;
     break;
   }
 }
 
-if (process.exitCode !== 1) {
+if (!failed) {
+  const manifestVersion = parsed["manifest.json"].version;
+  const packageVersion = parsed["package.json"].version;
+  if (manifestVersion !== undefined && packageVersion !== undefined && manifestVersion !== packageVersion) {
+    console.error(
+      `Version mismatch: manifest.json has version "${manifestVersion}" but package.json has version "${packageVersion}"`
+    );
+    failed = true;
+  }
+}
+
+if (!failed) {
   console.log(`JSON OK (${files.length} files)`);
+} else {
+  process.exitCode = 1;
 }
