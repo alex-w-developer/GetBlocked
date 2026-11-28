@@ -18,7 +18,7 @@ It is built as a small, inspectable Manifest V3 project for people who want a fr
 - Detects visible tracking attempts such as pixels, suspicious scripts, tracking iframes, and tracking links.
 - Shows a compact popup report with:
   - Estimated tracker resources on this page
-  - Decoyed on this page
+  - Reported Decoy replacements
   - Tracking links cleaned
   - Visible tracking attempts detected
   - Detected categories
@@ -85,7 +85,7 @@ While enabled:
 - Known tracker requests made with `fetch`, `XMLHttpRequest`, and `navigator.sendBeacon` are inspected in the page's main JavaScript world.
 - Common analytics identifiers and profile fields, including anonymous, client, user, device, and session IDs plus supported email/name/phone fields, are replaced when their request format is supported.
 - One coherent fake profile is reused across tabs for the current browser/extension session. It is discarded when Chrome restarts or the extension is reloaded, disabled, or updated.
-- A request counts as decoyed only when at least one supported field is actually replaced.
+- The interceptor reports a replacement when it changes a supported field. The popup and badge show a rate-limited, page-reported estimate.
 
 Decoy Mode does not create requests and never changes event names, event types, order or transaction IDs, products, prices, amounts, currencies, conversions, purchases, or ad-click fields. Existing transactional events are not invented or reclassified. Because tracker requests are allowed to reach their destinations, those services may still observe the user's IP address and other network metadata. See [Decoy Mode details](docs/DECOY_MODE.md).
 
@@ -120,7 +120,7 @@ There are no extension-owned analytics, telemetry endpoints, remote logs, or bun
 5. Select the GetBlocked! project folder.
 6. Pin GetBlocked! and open the popup on normal web pages.
 
-The production build avoids debug-only DNR feedback permissions. In normal mode, the popup and badge report an **Estimated tracker resources on this page** count derived from unique known-tracker resource URLs detected locally in the page. This is an estimate of tracker resources targeted by the blocking rules, not a Chrome-confirmed count of matched or blocked network requests. In Decoy Mode, the badge instead mirrors **Decoyed on this page**, which counts supported request payloads actually modified by the extension. URL-cleaning activity is reported separately. Normal-mode blocking and URL cleanup are enforced by MV3 `declarativeNetRequest`; in Decoy Mode, only the blocking rule is disabled.
+The production build avoids debug-only DNR feedback permissions. In normal mode, the popup and badge report an **Estimated tracker resources on this page** count derived from unique known-tracker resource URLs detected locally in the page. This is an estimate of tracker resources targeted by the blocking rules, not a Chrome-confirmed count of matched or blocked network requests. In Decoy Mode, the badge instead mirrors **Reported Decoy replacements**, an estimate based on local reports from page-world request wrappers. Pages can influence these reports, and busy tabs can exceed the reporting limits. URL-cleaning activity is reported separately. Normal-mode blocking and URL cleanup are enforced by MV3 `declarativeNetRequest`; in Decoy Mode, only the blocking rule is disabled.
 
 ## Contribute In 10 Minutes
 
@@ -244,7 +244,7 @@ http://localhost:8080/test/manual-test.html?utm_source=demo&utm_medium=test&fbcl
 
 With GetBlocked! enabled and Decoy Mode off, the tracking parameters should be removed from the page URL and known third-party tracker requests should be blocked. The popup should show page-level tracker activity.
 
-Then turn on **Decoy Mode (Experimental)** in the popup and reload the fixture. URL cleanup should continue, supported identifiers in the fixture's `fetch`, XHR, and beacon calls should be replaced, and **Decoyed on this page** should increase. The tracker requests themselves may still fail because the example endpoints reject test/CORS traffic; the counter records the local replacement attempt. Turn Decoy Mode off again to restore normal blocking.
+Then turn on **Decoy Mode (Experimental)** in the popup and reload the fixture. URL cleanup should continue, supported identifiers in the fixture's `fetch`, XHR, and beacon calls should be replaced, and **Reported Decoy replacements** should increase. The tracker requests themselves may still fail because the example endpoints reject test/CORS traffic; the counter records the local replacement attempt. Turn Decoy Mode off again to restore normal blocking.
 
 ## Contributor Links
 

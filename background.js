@@ -1,5 +1,6 @@
 importScripts("shared/config.js");
 importScripts("site-protection.js");
+importScripts("shared/decoy-reports.js");
 
 const {
   BLOCK_RULE_ID,
@@ -18,6 +19,9 @@ const UNSAFE_DOMAINS_KEY = "getblockedUnsafeDomains";
 const UNSAFE_RULESET_ID = "getblocked_unsafe_domains";
 
 let updateQueue = Promise.resolve();
+const decoyReportBudgets = new Map();
+const decoyReportDomains = new Set(TRACKER_DOMAINS);
+const MAX_BATCHES_PER_TAB = 4;
 
 function queueUpdate(task) {
   const operation = updateQueue.then(task);
@@ -148,13 +152,6 @@ function createEmptyTabStats() {
     detectedCategories: [],
     updatedAt: Date.now()
   };
-}
-
-function isKnownTrackerHost(hostname) {
-  const normalizedHost = String(hostname || "").toLowerCase();
-  return TRACKER_DOMAINS.some((domain) => {
-    return normalizedHost === domain || normalizedHost.endsWith(`.${domain}`);
-  });
 }
 
 function getTrackerCategories(hostname) {
@@ -330,7 +327,7 @@ async function syncBadgeForTab(tabId, stats, decoyMode = null) {
   }
   const count = getActiveBadgeCount(normalizeTabStats(stats), mode);
   const title = mode
-    ? `Decoyed requests on this page: ${count}`
+    ? `Reported Decoy replacements on this page: ${count}`
     : `Estimated tracker resources on this page: ${count}`;
 
   await Promise.all([
@@ -522,21 +519,37 @@ async function updatePageSignals(tabId, signals) {
   }
 }
 
-async function recordDecoyedRequest(tabId, hostname) {
-  const normalizedHost = String(hostname || "").toLowerCase();
-  if (!(await getDecoyMode()) || !isKnownTrackerHost(normalizedHost) || (await getTabStats(tabId)).sitePaused) {
-    return;
-  }
-
+async function recordDecoyedRequests(tabId, message) {
+  if (!(await getDecoyMode()) || (await getTabStats(tabId)).sitePaused) return;
   await updateTabStats(tabId, (current) => ({
-    decoyedRequests: current.decoyedRequests + 1,
+    decoyedRequests: current.decoyedRequests + message.count,
     detectedCategories: Array.from(
-      new Set([
-        ...current.detectedCategories,
-        ...getTrackerCategories(normalizedHost)
-      ])
+      new Set([...current.detectedCategories, ...message.domains.flatMap(getTrackerCategories)])
     )
   }));
+}
+
+function acceptDecoyBatch(tabId, message) {
+  const now = performance.now();
+  let budget = decoyReportBudgets.get(tabId);
+  if (!budget) {
+    budget = { start: now, used: 0, pending: 0 };
+    decoyReportBudgets.set(tabId, budget);
+  }
+  if (now - budget.start >= 1000) {
+    budget.start = now;
+    budget.used = 0;
+  }
+  if (budget.used >= MAX_BATCHES_PER_TAB || budget.pending >= MAX_BATCHES_PER_TAB) return;
+  budget.used++;
+  budget.pending++;
+  queueUpdate(async () => {
+    try {
+      await recordDecoyedRequests(tabId, message);
+    } finally {
+      budget.pending--;
+    }
+  });
 }
 
 async function getReport(tabId) {
@@ -555,9 +568,17 @@ async function getReport(tabId) {
   };
 }
 
+function isPopupSender(sender) {
+  return sender.id === chrome.runtime.id && sender.url === chrome.runtime.getURL("popup/popup.html");
+}
+
+function isTabSender(sender) {
+  return sender.id === chrome.runtime.id && Number.isInteger(sender.tab?.id) && sender.tab.id >= 0;
+}
+
 function handleMessage(message, sender, sendResponse) {
   if (message?.type === "SET_GETBLOCKED_SITE_PROTECTION") {
-    if (sender.id !== chrome.runtime.id || sender.url !== chrome.runtime.getURL("popup/popup.html") ||
+    if (!isPopupSender(sender) ||
         !Number.isInteger(message.tabId) || message.tabId < 0 ||
         typeof message.hostname !== "string" || typeof message.enabled !== "boolean") {
       sendResponse({ ok: false, error: "Invalid site setting request" });
@@ -570,9 +591,7 @@ function handleMessage(message, sender, sendResponse) {
   }
 
   if (message?.type === "SET_GETBLOCKED_UNSAFE_DOMAINS") {
-    if (sender.id !== chrome.runtime.id ||
-        sender.url !== chrome.runtime.getURL("popup/popup.html") ||
-        typeof message.enabled !== "boolean") {
+    if (!isPopupSender(sender) || typeof message.enabled !== "boolean") {
       sendResponse({ ok: false, error: "Invalid community-list setting request" });
       return false;
     }
@@ -595,17 +614,26 @@ function handleMessage(message, sender, sendResponse) {
     return false;
   }
 
-  if (message?.type === "GETBLOCKED_DECOYED_REQUEST") {
-    queueUpdate(() => {
-      return recordDecoyedRequest(sender.tab?.id, message.hostname);
-    });
+  if (message?.type === "GETBLOCKED_DECOYED_REQUESTS") {
+    if (!isTabSender(sender) || sender.documentLifecycle !== "active" ||
+        !globalThis.GetBlockedDecoyReports.isValidBatch(message, decoyReportDomains)) {
+      sendResponse({ ok: false, error: "Invalid Decoy report" });
+      return false;
+    }
+    acceptDecoyBatch(sender.tab.id, message);
     sendResponse({ ok: true });
     return false;
   }
 
   if (message?.type === "GETBLOCKED_DECOY_CONFIG") {
+    if (!isTabSender(sender)) {
+      sendResponse({ ok: false, error: "Invalid Decoy configuration request" });
+      return false;
+    }
     getDecoyConfiguration(sender.frameId === 0 ? sender.url : sender.tab?.url)
-      .then((configuration) => sendResponse({ ok: true, configuration }))
+      .then((configuration) => sendResponse({
+        ok: true, configuration, reportDomains: configuration.enabled ? TRACKER_DOMAINS : []
+      }))
       .catch((error) => {
         sendResponse({
           ok: false,
@@ -616,7 +644,11 @@ function handleMessage(message, sender, sendResponse) {
   }
 
   if (message?.type === "SET_GETBLOCKED_DECOY_MODE") {
-    const enabled = message.enabled === true;
+    if (!isPopupSender(sender) || typeof message.enabled !== "boolean") {
+      sendResponse({ ok: false, error: "Invalid Decoy Mode setting request" });
+      return false;
+    }
+    const enabled = message.enabled;
     queueUpdate(() => setDecoyMode(enabled))
       .then((configuration) => sendResponse({ ok: true, configuration }))
       .catch((error) => {
@@ -629,6 +661,10 @@ function handleMessage(message, sender, sendResponse) {
   }
 
   if (message?.type === "GETBLOCKED_REPORT") {
+    if (!isPopupSender(sender) || !Number.isInteger(message.tabId) || message.tabId < 0) {
+      sendResponse({ ok: false, error: "Invalid popup report request" });
+      return false;
+    }
     getReport(message.tabId)
       .then((report) => sendResponse({ ok: true, report }))
       .catch((error) => {
@@ -692,6 +728,7 @@ chrome.webNavigation.onCommitted.addListener((details) => {
 });
 
 chrome.tabs.onRemoved.addListener((tabId) => {
+  decoyReportBudgets.delete(tabId);
   queueUpdate(() => removeTabLocalData(tabId));
 });
 

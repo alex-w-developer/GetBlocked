@@ -21,7 +21,7 @@ The popup toggle saves `getblockedDecoyMode` in `chrome.storage.local`. The back
 - Disable static rule `1`, the third-party tracker-domain blocking rule.
 - Keep static rule `1000`, the top-level tracking-parameter cleanup rule, enabled.
 
-Document-start scripts run in all matching web frames. `decoy-interceptor.js` runs in the page's `MAIN` world so it can wrap page-owned `fetch`, `XMLHttpRequest`, and `navigator.sendBeacon`. `decoy-bridge.js` stays in the extension's isolated world and relays configuration and local counters to the service worker. Before page scripts run, the two worlds establish a one-time transferred `MessageChannel`; profile data and counters do not use a public, reusable window-message channel.
+Document-start scripts run in all matching web frames. `decoy-interceptor.js` runs in the page's `MAIN` world so it can wrap page-owned `fetch`, `XMLHttpRequest`, and `navigator.sendBeacon`. `decoy-bridge.js` stays in the extension's isolated world and relays configuration and local counters to the service worker. A window message transfers a `MessageChannel` port once. The interceptor then uses that port for configuration and reports.
 
 Only third-party requests to exact domains and subdomains in `shared/tracker-catalog.json` are eligible, matching the scope of the blocking rule that Decoy Mode disables. Decoy Mode does not broaden the tracker catalog or alter first-party requests when a user visits a catalog domain directly.
 
@@ -154,7 +154,13 @@ Replacing supported identifiers does **not** conceal IP addresses, network or TL
 
 These examples do not initiate network activity, create synthetic events, or modify transaction-related information.
 
-The popup increments **Decoyed on this page** only when at least one supported query or body field was replaced. Intercepted requests with no supported fields are not counted.
+## How to Interpret Replacement Reports
+
+**Reported Decoy replacements** is a local estimate. The page-world wrapper reports a request when it changes a supported field. Page scripts share that JavaScript world and can observe the fake profile, interfere with wrappers, or influence counts. The one-time port connection does not authenticate a replacement or establish that a request reached the network.
+
+The isolated bridge accepts reports only while configured for Decoy Mode. It recognizes the three wrapped transports and maps reported hosts back to bundled catalog domains. It forwards at most 64 reports in a single batch per second per frame, sending a count and distinct catalog domains. Paths, query strings, request bodies and arbitrary subdomains stay out of the report.
+
+The service worker accepts at most four batches per second per tab and caps outstanding batches at four. It verifies the sender, catalog and saved mode before updating that tab's local count, categories and badge. Excess reports and pending batches on navigation may be dropped. Only the extension popup can change protection settings or read a tab report.
 
 ## Transaction Safety
 
