@@ -82,10 +82,12 @@
     let size = 0;
     let complete = false;
     let expired = false;
-    const timeout = setTimeout(() => {
+    const stopReading = () => {
       expired = true;
       void reader.cancel().catch(() => {});
-    }, MAX_BODY_WAIT_MS);
+    };
+    request.signal.addEventListener("abort", stopReading, { once: true });
+    const timeout = setTimeout(stopReading, MAX_BODY_WAIT_MS);
     try {
       while (true) {
         const { done, value } = await reader.read();
@@ -100,6 +102,7 @@
       }
     } finally {
       clearTimeout(timeout);
+      request.signal.removeEventListener("abort", stopReading);
       if (!complete && !expired) void reader.cancel().catch(() => {});
       reader.releaseLock();
     }
@@ -107,9 +110,12 @@
 
   // Web IDL reads RequestInit dictionary members by name. Delegate each
   // option to the original object, including inherited options and getters.
-  function withBody(options, body) {
+  function withBody(options, body, explicitOptions) {
     return new Proxy({}, {
-      get: (_, name) => name === "body" ? body : options?.[name]
+      get(_, name) {
+        if (name === "body") return body;
+        return options && name in options ? options[name] : explicitOptions?.[name];
+      }
     });
   }
 
@@ -120,59 +126,94 @@
        contentType.includes("application/x-www-form-urlencoded"));
   }
 
-  async function prepareFetch(input, init, trackerUrl) {
-    const urlResult = transform.replaceUrl(trackerUrl, state.profile);
-    const fallback = { input, init, changed: false };
-    let nextInit = init;
-    let bodyForNewUrl = null;
-    let bodyChanged = false;
-    try {
-      if (input instanceof Request && input.body && init?.body == null) {
-        // Transfer the body and apply caller options just as fetch would.
-        // This effective Request stays usable if the clone cannot be read.
-        fallback.input = new Request(input, init);
-        fallback.init = undefined;
-        nextInit = undefined;
-        const contentType = getContentType(fallback.input.headers).toLowerCase();
-        if (!supportsEmbeddedText(contentType)) return fallback;
-        const bytes = await readSmallBody(fallback.input);
-        if (!bytes) return fallback;
-        const text = new TextDecoder("utf-8", { fatal: true }).decode(await bytes.arrayBuffer());
-        const bodyResult = transform.replaceText(text, state.profile, contentType);
-        bodyChanged = bodyResult.changed;
-        bodyForNewUrl = bodyChanged ? bodyResult.value : bytes;
-        if (bodyChanged && !urlResult.changed) nextInit = { body: bodyResult.value };
-      } else if (init?.body != null) {
-        const bodyResult = transform.replaceBody(
-          init.body, state.profile, getContentType(init.headers || input?.headers)
-        );
-        if (bodyResult.changed) {
-          bodyChanged = true;
-          nextInit = withBody(init, bodyResult.value);
+  function keepaliveBodyFits(body) {
+    const text = body instanceof URLSearchParams ? body.toString() : body;
+    return typeof text !== "string" ||
+      (text.length <= MAX_BODY_BYTES && new TextEncoder().encode(text).length <= MAX_BODY_BYTES);
+  }
+
+  async function rewriteEmbeddedRequest(request, init, urlResult, profile) {
+    const contentType = getContentType(request.headers).toLowerCase();
+    const inspectText = supportsEmbeddedText(contentType);
+    if (request.signal.aborted || (!inspectText && !urlResult.changed)) return null;
+
+    // Snapshot exposed Request options and explicit write-only RequestInit
+    // values (e.g. priority) before waiting for the body.
+    const destination = urlResult.changed
+      ? new Request(urlResult.value, withBody(request, null, init))
+      : request;
+    const bytes = await readSmallBody(request);
+    if (!bytes || request.signal.aborted) return null;
+    if (inspectText) {
+      let text;
+      try {
+        text = new TextDecoder("utf-8", { fatal: true }).decode(await bytes.arrayBuffer());
+      } catch {
+        // Preserve the exact bytes if only the URL can be changed.
+      }
+      if (text !== undefined) {
+        const result = transform.replaceText(text, profile, contentType);
+        if (result.changed && (!request.keepalive || keepaliveBodyFits(result.value))) {
+          return new Request(destination, { body: result.value });
         }
       }
-
-      let nextInput = fallback.input;
-      if (urlResult.changed) {
-        nextInput = nextInput instanceof Request
-          ? new Request(urlResult.value, withBody(nextInput, bodyForNewUrl))
-          : urlResult.value;
-      }
-      return { input: nextInput, init: nextInit, changed: urlResult.changed || bodyChanged };
-    } catch {
-      return fallback;
     }
+    return urlResult.changed ? new Request(destination, { body: bytes }) : null;
   }
 
   if (typeof nativeFetch === "function") {
     globalThis.fetch = async function getBlockedDecoyFetch(input, init) {
-      const rawUrl = input instanceof Request ? input.url : String(input);
-      const trackerUrl = isReady() ? thirdPartyTrackerUrl(rawUrl) : null;
-      if (!trackerUrl) return Reflect.apply(nativeFetch, this, arguments);
+      if (!isReady() || arguments.length === 0) return Reflect.apply(nativeFetch, this, arguments);
+      // Native fetch coerces a non-Request URL argument once.
+      const nativeInput = input instanceof Request ? input : `${input}`;
+      const rawUrl = nativeInput instanceof Request ? nativeInput.url : nativeInput;
+      const trackerUrl = thirdPartyTrackerUrl(rawUrl);
+      if (!trackerUrl) return Reflect.apply(nativeFetch, this, [nativeInput, init]);
 
-      const prepared = await prepareFetch(input, init, trackerUrl);
-      if (prepared.changed) reportDecoyed(trackerUrl.hostname, "fetch");
-      return Reflect.apply(nativeFetch, this, [prepared.input, prepared.init]);
+      const profile = state.profile;
+      const urlResult = transform.replaceUrl(trackerUrl, profile);
+      if (input instanceof Request && input.body && init?.body == null) {
+        // Transfer the original body and capture caller options just as fetch
+        // would. A suspended, oversized or aborted upload keeps this Request.
+        const effective = new Request(input, init);
+        let rewritten;
+        try {
+          rewritten = await rewriteEmbeddedRequest(effective, init, urlResult, profile);
+        } catch {
+          // Some Request types cannot be rebuilt with a new URL.
+        }
+        if (rewritten) reportDecoyed(trackerUrl.hostname, "fetch");
+        return Reflect.apply(nativeFetch, this, [rewritten || effective]);
+      }
+
+      // Native fetch snapshots a direct BodyInit, headers and options during
+      // the call. Dispatch this path before control returns to the caller.
+      let nextInput = nativeInput;
+      let nextInit = init;
+      let changed = false;
+      try {
+        if (urlResult.changed) {
+          nextInput = input instanceof Request
+            ? new Request(urlResult.value, withBody(input, null))
+            : urlResult.value;
+          changed = true;
+        }
+        const keepalive = init?.keepalive ?? input?.keepalive;
+        // The UA chooses the multipart boundary and serialized length. Keep
+        // its original FormData so a valid keepalive upload stays in quota.
+        if (init?.body != null && !(keepalive && init.body instanceof FormData)) {
+          const result = transform.replaceBody(init.body, profile, getContentType(init.headers || input?.headers));
+          if (result.changed && (!keepalive || keepaliveBodyFits(result.value))) {
+            nextInit = withBody(init, result.value);
+            changed = true;
+          }
+        }
+      } catch {
+        return Reflect.apply(nativeFetch, this, [nativeInput, init]);
+      }
+
+      if (changed) reportDecoyed(trackerUrl.hostname, "fetch");
+      return Reflect.apply(nativeFetch, this, [nextInput, nextInit]);
     };
   }
 
