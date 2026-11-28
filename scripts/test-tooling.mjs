@@ -1,3 +1,4 @@
+import { openCdpSession } from "./browser-cdp.mjs";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import os from "node:os";
@@ -182,6 +183,29 @@ test("browser target selection ignores unrelated and stale background workers", 
   assert.equal(await selectExtensionTarget(targets, manifest, probe), targets[4]);
   assert.equal(await selectExtensionTarget(targets.slice(0, 4), manifest, probe), null);
   assert.equal(await selectExtensionTarget([{ ...worker("getblocked"), type: "page" }], manifest, probe), null);
+});
+
+test("CDP reports handshake failure, stalled commands and disconnected sessions", async () => {
+  let socket;
+  class TestSocket extends EventTarget {
+    static OPEN = 1;
+    readyState = 1;
+    constructor() { super(); socket = this; }
+    close() { this.readyState = 3; this.dispatchEvent(new Event("close")); }
+    send() {}
+  }
+  const connect = () => openCdpSession("ws://localhost", { Socket: TestSocket, timeoutMs: 100 });
+  const first = connect();
+  socket.close();
+  await assert.rejects(first, /connection closed/);
+  const second = connect();
+  socket.dispatchEvent(new Event("open"));
+  const session = await second;
+  await assert.rejects(session.send("Page.enable"), /timed out: Page.enable/);
+  const pending = session.send("Page.navigate");
+  socket.close();
+  await assert.rejects(pending, /connection closed/);
+  await assert.rejects(session.send("Page.enable"), /connection closed/);
 });
 
 function writeJsonFixture(dir, manifestVersion = "0.2.0", packageVersion = "0.2.0") {

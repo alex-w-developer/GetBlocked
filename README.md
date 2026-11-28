@@ -113,7 +113,7 @@ There are no extension-owned analytics, telemetry endpoints, remote logs, or bun
 
 ## Install Locally In Chrome
 
-1. Download or clone this repository.
+1. Clone this repository, or download and extract its source ZIP. Chrome 120 or newer can load the extension directly from these files.
 2. Open `chrome://extensions`.
 3. Turn on Developer mode.
 4. Choose Load unpacked.
@@ -143,7 +143,7 @@ For common extension and tracking terms, see the [GetBlocked! Glossary](docs/GLO
 
 ## How The Tracker Catalog Works
 
-An additional **Community domain list** switch is off by default. It enables 67 community-reported unsafe domains from Dev2023-Op's fork. These reports are unverified and may block legitimate sites. When enabled, the list blocks visits and requests independently of Decoy Mode. It is bundled locally and does not update automatically. See [the community-list guide](docs/UNSAFE_DOMAINS.md) for provenance, limitations, and the exact file to edit.
+An additional **Community domain list** switch is off by default. It enables the bundled snapshot of community-reported domains from Dev2023-Op's fork. These reports are unverified and may block legitimate sites. When enabled, the list blocks visits and requests independently of Decoy Mode. It is bundled locally and does not update automatically. See [the community-list guide](docs/UNSAFE_DOMAINS.md) for provenance, limitations, and the exact file to edit.
 
 Tracker domains are maintained in [shared/tracker-catalog.json](shared/tracker-catalog.json).
 
@@ -172,15 +172,13 @@ Do not edit generated rules/config by hand unless you also update the generator 
 
 ## Run Tests
 
-Run the same local validation layers that CI uses:
+Use a Git clone with Node.js 22.4 or newer and npm. Git supplies the index used to check generated files. CI runs Node.js 22. From the repository root run
 
 ```bash
 npm run check
 ```
 
-This regenerates rules, runs the evidence fixture, checks JavaScript syntax,
-parses JSON data files, verifies generated files are in sync, and runs the
-privacy/safety guardrails.
+This regenerates the rules and checks evidence fixtures, worker and tooling behavior, Decoy transformations, JavaScript syntax, JSON, release versions, generated-file consistency, and privacy guardrails.
 
 Useful individual checks:
 
