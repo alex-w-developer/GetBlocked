@@ -6,6 +6,7 @@ const rootDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..")
 const sourceFiles = [
   "manifest.json",
   "background.js",
+  "site-protection.js",
   "content-script.js",
   "decoy-bridge.js",
   "decoy-interceptor.js",

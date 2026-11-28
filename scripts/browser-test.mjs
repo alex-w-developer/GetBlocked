@@ -146,7 +146,30 @@ function startFileServer(root, port) {
   };
 
   const server = http.createServer((req, res) => {
-    const urlPath = new URL(req.url, `http://127.0.0.1:${port}`).pathname;
+    const requestUrl = new URL(req.url, `http://127.0.0.1:${port}`);
+    const urlPath = requestUrl.pathname;
+    if (urlPath === "/test/site-page") {
+      res.writeHead(200, { "Content-Type": "text/html" });
+      res.end("<!doctype html><title>Site protection test</title>");
+      return;
+    }
+    if (urlPath === "/test/site-frame") {
+      res.writeHead(200, { "Content-Type": "text/html" });
+      res.end(`<!doctype html><title>Embedded tracker probe</title><script>
+        addEventListener("message", async event => {
+          if (event.source !== parent || event.data !== "run-site-probe") return;
+          const cid = await fetch("http://probe.posthog.com:${port}/test/site-probe?cid=site-fixture")
+            .then(response => response.json()).then(result => result.cid).catch(() => null);
+          parent.postMessage({ cid }, event.origin);
+        });
+      </script>`);
+      return;
+    }
+    if (urlPath === "/test/site-probe") {
+      res.writeHead(200, { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*", "Cache-Control": "no-store" });
+      res.end(JSON.stringify({ cid: requestUrl.searchParams.get("cid") }));
+      return;
+    }
     const filePath = path.join(root, urlPath);
     const rootWithSep = root.endsWith(path.sep) ? root : root + path.sep;
     if (!filePath.startsWith(rootWithSep) && filePath !== root) {
@@ -1118,6 +1141,103 @@ async function main() {
       await sleep(500);
       const restoredCommunity = await evaluatePopup(`document.querySelector('#unsafe-domains-toggle')?.checked`);
       check("Community list: reopening popup reflects the saved enabled state", restoredCommunity === true);
+
+      const probeUrl = `http://probe.posthog.com:${TEST_PORT}/test/site-probe?cid=site-fixture`;
+      const sitePage = hostname => `http://${hostname}:${TEST_PORT}/test/site-page?utm_source=site-test`;
+      async function readPage(cdp, expression) {
+        const { result, exceptionDetails } = await cdp.send("Runtime.evaluate", {
+          expression, awaitPromise: true, returnByValue: true, timeout: 5000
+        });
+        if (exceptionDetails) throw new Error(exceptionDetails.exception?.description || exceptionDetails.text);
+        return result.value;
+      }
+      function probe(cdp, url = probeUrl) {
+        return readPage(cdp, `fetch(${JSON.stringify(url)}).then(r => r.json()).then(data => data.cid).catch(() => null)`);
+      }
+      function probeChildFrame(cdp, hostname) {
+        return readPage(cdp, `new Promise((resolve, reject) => {
+          const frame = document.createElement('iframe');
+          frame.src = 'http://${hostname}:${TEST_PORT}/test/site-frame';
+          const deadline = setTimeout(() => reject(new Error('Frame probe timed out')), 4000);
+          function receive(event) {
+            if (event.source !== frame.contentWindow || event.origin !== new URL(frame.src).origin) return;
+            clearTimeout(deadline);
+            removeEventListener('message', receive);
+            frame.remove();
+            resolve(event.data.cid);
+          }
+          addEventListener('message', receive);
+          frame.onload = () => setTimeout(() => frame.contentWindow.postMessage('run-site-probe', new URL(frame.src).origin), 400);
+          document.body.append(frame);
+        })`);
+      }
+      async function navigateSite(cdp, hostname) {
+        await cdp.send("Page.navigate", { url: sitePage(hostname) });
+        await sleep(500);
+        return readPage(cdp, "location.search");
+      }
+      async function clickSetting(selector) {
+        return evaluatePopup(`(async () => {
+          const toggle = document.querySelector(${JSON.stringify(selector)});
+          if (toggle.disabled) throw new Error("Setting is unavailable");
+          toggle.click();
+          for (let i = 0; toggle.disabled && i < 50; i++) await new Promise(resolve => setTimeout(resolve, 50));
+          return { checked: toggle.checked, disabled: toggle.disabled };
+        })()`);
+      }
+
+      check("Site protection: popup identifies the active hostname and starts enabled",
+        await evaluatePopup("document.querySelector('#site-protection-toggle').checked && document.querySelector('#site-protection-description').textContent.startsWith('localhost only.')"));
+      const pausedSwitch = await clickSetting("#site-protection-toggle");
+      check("Site protection: popup saves a pause for the active hostname",
+        pausedSwitch?.checked === false && pausedSwitch.disabled === false);
+      const pausedQuery = await navigateSite(secondPageCdp, "localhost");
+      const protectedQuery = await navigateSite(pageCdp, "child.localhost");
+      check("Site protection: only the paused hostname keeps tracking parameters",
+        pausedQuery.includes("utm_source") && !protectedQuery.includes("utm_source"));
+      check("Site protection: actual tracker traffic passes only on the paused hostname",
+        await probe(secondPageCdp) === "site-fixture" && await probe(pageCdp) === null);
+      check("Site protection: embedded frames inherit the top-level DNR policy",
+        await probeChildFrame(secondPageCdp, "child.localhost") === "site-fixture" &&
+        await probeChildFrame(pageCdp, "localhost") === null);
+      check("Site protection: the community block still wins on the paused page",
+        await probe(secondPageCdp, `http://${COMMUNITY_HOST}:${TEST_PORT}/test/site-probe?cid=site-fixture`) === null);
+      const pausedReport = await evaluateExtension(`getReport(${secondTabId})`);
+      check("Site protection: paused report and badge match", pausedReport?.site?.enabled === false &&
+        pausedReport.page.sitePaused && await evaluateExtension(`chrome.action.getTitle({ tabId: ${secondTabId} })`) === "Site protection paused");
+      await clickSetting("#decoy-mode-toggle");
+      await navigateSite(secondPageCdp, "localhost");
+      await navigateSite(pageCdp, "child.localhost");
+      const protectedId = await probe(pageCdp);
+      check("Site protection: Decoy changes identifiers on protected pages and leaves paused pages alone",
+        await probe(secondPageCdp) === "site-fixture" && Boolean(protectedId) && protectedId !== "site-fixture",
+        JSON.stringify({ protectedId }));
+      const protectedFrameId = await probeChildFrame(pageCdp, "localhost");
+      check("Site protection: embedded frames inherit the top-level Decoy policy",
+        await probeChildFrame(secondPageCdp, "child.localhost") === "site-fixture" &&
+        Boolean(protectedFrameId) && protectedFrameId !== "site-fixture", JSON.stringify({ protectedFrameId }));
+      await clickSetting("#decoy-mode-toggle");
+      // Cache a paused document in one tab and restore protection from the other.
+      await navigateSite(pageCdp, "localhost");
+      await readPage(pageCdp, "addEventListener('pageshow', event => { document.documentElement.dataset.persisted = String(event.persisted); })");
+      const cachedHistory = await pageCdp.send("Page.getNavigationHistory");
+      await pageCdp.send("Page.navigate", { url: "about:blank" });
+      const restoredSwitch = await clickSetting("#site-protection-toggle");
+      await pageCdp.send("Page.navigateToHistoryEntry", { entryId: cachedHistory.entries[cachedHistory.currentIndex].id });
+      await sleep(500);
+      const persistedSite = await readPage(pageCdp, "document.documentElement.dataset.persisted");
+      const restoredSiteReport = await evaluateExtension(`getReport(${tabId})`);
+      const restoredProbe = await probe(pageCdp);
+      const restoredTitle = await evaluateExtension(`chrome.action.getTitle({ tabId: ${tabId} })`);
+      log("Site protection: history document restored from BFCache after rule change:", persistedSite === "true");
+      check("Site protection: request enforcement, report and badge agree after restoring history",
+        restoredSiteReport?.site?.enabled === true && !restoredSiteReport.page.sitePaused &&
+        restoredTitle === "Estimated tracker resources on this page: 0" && restoredProbe === null,
+        JSON.stringify({ persistedSite, restoredSiteReport, restoredTitle, restoredProbe }));
+      const restoredQuery = await navigateSite(secondPageCdp, "localhost");
+      check("Site protection: resuming restores cleanup and blocking",
+        restoredSwitch?.checked === true && !restoredQuery.includes("utm_source") && await probe(secondPageCdp) === null);
+
       await evaluatePopup(`(async () => {
         document.querySelector('#unsafe-domains-toggle').click();
         await new Promise(resolve => setTimeout(resolve, 400));

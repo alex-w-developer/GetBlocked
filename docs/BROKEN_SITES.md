@@ -41,8 +41,8 @@ The more detail you provide, the faster a maintainer can reproduce and verify th
 
 Helpful checks:
 
-1. Disable GetBlocked! and reload the page. Confirm the feature works again.
-2. Re-enable GetBlocked! and reload the page. Confirm the feature breaks again.
+1. Turn off **Site protection** in the popup and reload the page. Confirm whether the feature works. This exception covers the hostname shown in the popup, including embeds on its pages.
+2. Turn **Site protection** back on and reload. Confirm whether the feature breaks again. If the optional **Community domain list** is enabled, test that switch separately. Community blocking still applies on paused sites.
 3. Open Chrome DevTools (**F12**) → **Network** tab.
 4. Filter by `blocked` or look for red-highlighted requests (`net::ERR_BLOCKED_BY_CLIENT`).
 5. Note blocked domains near the broken feature (e.g., a form submission depends on a blocked analytics script).

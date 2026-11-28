@@ -30,13 +30,13 @@ It is built as a small, inspectable Manifest V3 project for people who want a fr
 ### Extension Popup Overview
 
 <p align="center">
-  <img src="assets/popup-screenshot.png" alt="GetBlocked! popup showing normal blocking mode, page counts, and detected tracker categories" width="300">
+  <img src="assets/popup-screenshot.png" alt="Normal-mode popup showing Decoy Mode off, protection on for reader.example.test, and the optional community list off" width="356">
 </p>
 
 ### Normal and Decoy Modes
 
 <p align="center">
-  <img src="assets/usage-demo.gif" alt="GetBlocked! popup switching between normal blocking and experimental Decoy Mode" width="356">
+  <img src="assets/usage-demo.gif" alt="The popup switches from normal protection to Decoy Mode and scrolls to the page report and network privacy warning" width="356">
 </p>
 
 ## What GetBlocked! Can Block
@@ -68,9 +68,15 @@ When experimental Decoy Mode is on, the main tracker-blocking rule is disabled, 
 - Decoy Mode cannot hide an IP address, TLS/network metadata, browser fingerprint, or identifiers added outside the supported request formats.
 - Decoy Mode cannot rewrite image pixels, scripts, forms, WebSockets, or requests that begin before its session configuration is available.
 
+## Pause protection for a website
+
+If a page breaks, open the popup, turn off **Site protection**, and reload the page. The exception covers the exact hostname shown in the popup across HTTP, HTTPS, and all ports. Pausing `shop.example.com` leaves `example.com` and `checkout.shop.example.com` protected when visited directly. Embedded frames follow their top-level page.
+
+Paused sites keep their original URLs and can send tracker requests without Decoy replacements. The optional community domain list still applies. Chrome saves the exception locally across restarts and extension updates. Turn **Site protection** back on and reload each open tab on that hostname to resume the global mode.
+
 ## Experimental Decoy Mode
 
-Decoy Mode is off by default. Use the clearly labeled **Experimental** toggle in the popup to enable it. It applies to **all websites**: turning it on from one site's popup pauses catalog tracker blocking everywhere, including other tabs. URL cleanup stays on. Turn it off from any site's popup to restore blocking everywhere; the global preference remains saved across browser restarts.
+Decoy Mode is off by default. Turning on the **Experimental** toggle pauses catalog tracker blocking on all websites, including other tabs. On protected sites, URL cleanup stays on and Decoy Mode replaces supported identifiers. Turning the toggle off restores normal blocking on protected sites. The global preference survives browser restarts.
 
 While enabled:
 

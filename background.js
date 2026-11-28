@@ -1,4 +1,5 @@
 importScripts("shared/config.js");
+importScripts("site-protection.js");
 importScripts("shared/decoy-reports.js");
 
 const {
@@ -280,8 +281,16 @@ async function setDecoyMode(enabled) {
   return { enabled, profile };
 }
 
-async function getDecoyConfiguration() {
-  const enabled = await getDecoyMode();
+async function getDecoyConfiguration(sender) {
+  await updateQueue;
+  let enabled = await getDecoyMode();
+  if (enabled && sender) {
+    // New frames and global mode changes follow their current document until
+    // its next top-level navigation, even if the user just saved an exception.
+    const { sitePaused } = await getTabStats(sender.tab.id);
+    const topLevelUrl = sender.frameId === 0 ? sender.url : sender.tab.url;
+    enabled = sitePaused === undefined ? (await getSiteProtection(topLevelUrl))?.enabled !== false : !sitePaused;
+  }
   return {
     enabled,
     profile: enabled ? await ensureDecoySessionProfile() : null
@@ -333,6 +342,10 @@ async function syncBadgeForTab(tabId, stats, decoyMode = null) {
   }
 
   const mode = decoyMode === null ? await getDecoyMode() : decoyMode;
+  if (stats?.sitePaused) {
+    await Promise.all([setBadgeText(tabId, ""), setActionTitle(tabId, "Site protection paused")]);
+    return;
+  }
   const count = getActiveBadgeCount(normalizeTabStats(stats), mode);
   const title = mode
     ? `Reported Decoy replacements on this page: ${count}`
@@ -364,6 +377,7 @@ async function updateTabStats(tabId, updater) {
 
   const tabStats = await getAllTabStats();
   const current = normalizeTabStats(tabStats[String(tabId)]);
+  if (current.sitePaused) return current;
   const next = normalizeTabStats({
     ...current,
     ...updater(current),
@@ -531,7 +545,8 @@ async function getReport(tabId) {
   await syncBadgeForTab(tabId, pageStats, decoyMode);
 
   return {
-    page: { ...pageStats, blockedOnPage: decoyMode ? 0 : getActiveBadgeCount(pageStats, false) },
+    page: { ...pageStats, blockedOnPage: decoyMode || pageStats.sitePaused ? 0 : getActiveBadgeCount(pageStats, false) },
+    site: await getSiteProtection((await chrome.tabs.get(tabId)).url),
     decoyMode,
     unsafeDomainBlocking: await getUnsafeDomainBlocking(),
     localOnly: true,
@@ -548,6 +563,19 @@ function isTabSender(sender) {
 }
 
 function handleMessage(message, sender, sendResponse) {
+  if (message?.type === "SET_GETBLOCKED_SITE_PROTECTION") {
+    if (!isPopupSender(sender) ||
+        !Number.isInteger(message.tabId) || message.tabId < 0 ||
+        typeof message.hostname !== "string" || typeof message.enabled !== "boolean") {
+      sendResponse({ ok: false, error: "Invalid site setting request" });
+      return false;
+    }
+    queueUpdate(() => setSiteProtection(message.tabId, message.hostname, message.enabled))
+      .then(() => sendResponse({ ok: true }))
+      .catch(error => sendResponse({ ok: false, error: error.message || "Unable to update site protection" }));
+    return true;
+  }
+
   if (message?.type === "SET_GETBLOCKED_UNSAFE_DOMAINS") {
     if (!isPopupSender(sender) || typeof message.enabled !== "boolean") {
       sendResponse({ ok: false, error: "Invalid community-list setting request" });
@@ -588,7 +616,7 @@ function handleMessage(message, sender, sendResponse) {
       sendResponse({ ok: false, error: "Invalid Decoy configuration request" });
       return false;
     }
-    getDecoyConfiguration()
+    getDecoyConfiguration(sender)
       .then((configuration) => sendResponse({
         ok: true, configuration, reportDomains: configuration.enabled ? TRACKER_DOMAINS : []
       }))
@@ -678,6 +706,7 @@ chrome.webNavigation.onCommitted.addListener((details) => {
     );
 
     await resetTabStats(details.tabId, {
+      sitePaused: (await getSiteProtection(details.url))?.enabled === false,
       trackingLinksCleaned: trackingParamsRemoved > 0 ? 1 : 0,
       trackingParamsRemoved
     });
