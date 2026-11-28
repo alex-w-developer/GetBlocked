@@ -46,9 +46,13 @@ Decoy Mode can replace supported fields in:
 - JSON string bodies.
 - URL-encoded string bodies and `URLSearchParams`.
 - `FormData` string fields.
-- Textual `Request` bodies that can be cloned safely by the `fetch` wrapper.
+- Embedded UTF-8 textual `Request` bodies that fit in 64 KiB and 64 chunks and finish reading within the wrapper's 50 ms budget.
 
-Binary, locked, already-consumed, unsupported, and streaming bodies pass through unchanged. Image pixels, script tags, iframes, CSS resources, HTML form navigation, WebSockets, WebTransport, and browser- or library-internal traffic that bypasses the wrapped APIs are not rewritten. A very early request may also run before the asynchronous session configuration reaches the main-world wrapper.
+An already constructed `Request` exposes its body as a stream even when the caller supplied a string. The wrapper reads a bounded copy when it can replace a query or inspect supported text. For small binary or unsupported bodies, it can replace query identifiers while preserving the exact body bytes. If a keepalive replacement would grow a text or URL-encoded payload beyond 64 KiB, the original body is retained. Direct keepalive `FormData` uploads also retain their original fields because the browser determines the serialized multipart size.
+
+If an embedded upload exceeds the reading budget, its data and query pass to native `fetch` together. Rebuilding it from the exposed stream can break a valid HTTP/1.1 upload or change redirect handling. When a page supplies a binary or streaming body directly in fetch options, eligible query fields can still be replaced. The browser handles aborted, locked and previously consumed requests according to its normal rules. Rebuilt URLs preserve exposed Request options and explicit fetch options. The browser can retain additional internal state that JavaScript cannot inspect.
+
+Image pixels, script tags, iframes, CSS resources, HTML form navigation, WebSockets, WebTransport, and browser- or library-internal traffic that bypasses the wrapped APIs are not rewritten. A very early request may also run before the asynchronous session configuration reaches the main-world wrapper.
 
 ### Static Request Transformation Examples
 

@@ -118,8 +118,16 @@ const frame = {
 };
 const transportContext = vm.createContext({
   window: frame, document: { baseURI: frame.origin }, URL, URLSearchParams,
-  Request, Headers, XMLHttpRequest: LocalXhr, Navigator: LocalNavigator,
-  fetch: async url => { calls.push(url); }
+  Request, Headers, Blob, FormData, File, TextDecoder, TextEncoder, setTimeout, clearTimeout,
+  XMLHttpRequest: LocalXhr, Navigator: LocalNavigator,
+  fetch: async (input, init) => {
+    calls.push(input);
+    if (input instanceof Request || init) {
+      const request = new Request(input, init);
+      request.signal.throwIfAborted();
+      return request;
+    }
+  }
 });
 for (const file of ["shared/config.js", "shared/tracker-scope.js", "shared/decoy-transform.js", "decoy-interceptor.js"]) {
   vm.runInContext(fs.readFileSync(path.join(rootDir, file), "utf8"), transportContext);
@@ -148,4 +156,141 @@ for (const [origin, base, input, expected] of [
   assert.deepEqual(calls, [expected, expected, expected], [origin, base, input].join(" "));
 }
 
+const originalUrl = "https://api.segment.io/collect?user_id=original";
+const changedUrl = originalUrl.replace("=original", "=" + profile.userId);
+for (const enabled of [false, true]) {
+  port.onmessage({ data: { type: "configure", enabled, profile } });
+  let conversions = 0;
+  const urlArgument = { toString() { conversions++; return "https://unlisted.example/path"; } };
+  await transportContext.fetch(urlArgument, { method: "GET" });
+  assert.equal(conversions, 1);
+}
+const posted = new Request(originalUrl, {
+  method: "POST", keepalive: true, credentials: "include", redirect: "error",
+  headers: { "content-type": "application/json", "x-local-test": "kept" },
+  body: JSON.stringify({ user_id: "original", event: "page_view" })
+});
+const rewritten = await transportContext.fetch(posted);
+assert.equal(new URL(rewritten.url).searchParams.get("user_id"), profile.userId);
+assert.equal(rewritten.keepalive, true);
+assert.equal(rewritten.method, "POST");
+assert.equal(rewritten.credentials, "include");
+assert.equal(rewritten.redirect, "error");
+assert.equal(rewritten.headers.get("x-local-test"), "kept");
+assert.deepEqual(await rewritten.json(), { user_id: profile.userId, event: "page_view" });
+assert.equal(posted.bodyUsed, true);
+
+const inheritedOptions = Object.create({ method: "PUT", keepalive: true, body: "user_id=overridden" });
+const overridden = await transportContext.fetch(new Request(originalUrl), inheritedOptions);
+assert.equal(overridden.method, "PUT");
+assert.equal(overridden.keepalive, true);
+assert.equal(await overridden.text(), "user_id=" + profile.userId);
+
+const initialOptions = {
+  method: "POST", headers: new Headers({ "x-snapshot": "original" }), body: new URLSearchParams("page=one")
+};
+const pending = transportContext.fetch(originalUrl, initialOptions);
+initialOptions.method = "PUT";
+initialOptions.headers.set("x-snapshot", "changed");
+initialOptions.body.set("page", "two");
+const snapshot = await pending;
+assert.equal(snapshot.method, "POST");
+assert.equal(snapshot.headers.get("x-snapshot"), "original");
+assert.equal(await snapshot.text(), "page=one");
+
+const oversized = "user_id=original&padding=" + "a".repeat(64 * 1024);
+for (const keepalive of [false, true]) {
+  const large = await transportContext.fetch(new Request(originalUrl, { method: "POST", body: oversized, keepalive }));
+  assert.equal(large.url, originalUrl);
+  assert.equal(await large.text(), oversized);
+}
+const nearLimit = "user_id=x&pad=".padEnd(65535, "a");
+for (const [input, init] of [
+  [new Request(originalUrl, { method: "POST", keepalive: true, body: nearLimit })],
+  [originalUrl, { method: "POST", keepalive: true, body: new URLSearchParams(nearLimit) }]
+]) {
+  const exact = await transportContext.fetch(input, init);
+  assert.equal(exact.url, changedUrl);
+  assert.equal(await exact.text(), nearLimit);
+}
+const multipart = new FormData();
+multipart.append("user_id", "x");
+for (const keepalive of [false, true]) {
+  const uploaded = await transportContext.fetch(originalUrl, { method: "POST", keepalive, body: multipart });
+  assert.equal(uploaded.url, changedUrl);
+  assert.equal((await uploaded.formData()).get("user_id"), keepalive ? "x" : profile.userId);
+}
+
+const malformedBytes = Uint8Array.from([...new TextEncoder().encode("user_id=original&data="), 255]);
+const binary = await transportContext.fetch(new Request(originalUrl, {
+  method: "POST", headers: { "content-type": "text/plain" }, body: malformedBytes
+}));
+assert.equal(binary.url, changedUrl);
+assert.deepEqual(new Uint8Array(await binary.arrayBuffer()), malformedBytes);
+
+const otherEncoding = await transportContext.fetch(new Request(originalUrl, {
+  method: "POST", headers: { "content-type": 'text/plain; charset="windows-1252"' }, body: "user_id=original"
+}));
+assert.equal(otherEncoding.url, changedUrl);
+assert.equal(await otherEncoding.text(), "user_id=original");
+
+let finishUpload;
+const stream = new ReadableStream({
+  start(controller) {
+    finishUpload = () => {
+      controller.enqueue(new TextEncoder().encode("user_id=original"));
+      controller.close();
+    };
+  }
+});
+const slow = new Request(originalUrl, {
+  method: "POST", duplex: "half", body: stream, headers: { "content-type": "text/plain" }
+});
+let watchdog;
+try {
+  const forwarded = await Promise.race([
+    transportContext.fetch(slow),
+    new Promise((_, reject) => { watchdog = setTimeout(() => reject(new Error("Fetch waited for the upload")), 2000); })
+  ]);
+  assert.equal(forwarded.url, originalUrl);
+  finishUpload();
+  finishUpload = null;
+  assert.equal(await forwarded.text(), "user_id=original");
+} finally {
+  clearTimeout(watchdog);
+  finishUpload?.();
+}
+
+const raw = new Request(originalUrl, { method: "POST", body: "consumed" });
+await raw.text();
+await assert.rejects(transportContext.fetch(raw), TypeError);
+const explicitlyStreamed = new ReadableStream({
+  start(controller) { controller.enqueue(new TextEncoder().encode("stream data")); controller.close(); }
+});
+const directStream = await transportContext.fetch(originalUrl, { method: "POST", duplex: "half", body: explicitlyStreamed });
+assert.equal(directStream.url, changedUrl);
+assert.equal(await directStream.text(), "stream data");
+
+// An abort must interrupt inspection even if the browser delays timers.
+let readTimers = 0;
+transportContext.setTimeout = () => { readTimers++; return 0; };
+for (const alreadyAborted of [true, false]) {
+  const controller = new AbortController();
+  const reason = new Error("cancelled by caller");
+  const stream = new ReadableStream({});
+  if (alreadyAborted) controller.abort(reason);
+  const request = new Request(originalUrl, {
+    method: "POST", body: stream, duplex: "half", signal: controller.signal, headers: { "content-type": "text/plain" }
+  });
+  const pending = transportContext.fetch(request);
+  if (!alreadyAborted) controller.abort(reason);
+  let deadline;
+  try {
+    const guard = new Promise((_, reject) => {
+      deadline = setTimeout(() => reject(new Error("Abort did not reach fetch")), 1500);
+    });
+    await assert.rejects(Promise.race([pending, guard]), (error) => error === reason);
+  } finally { clearTimeout(deadline); }
+  assert.equal(readTimers, alreadyAborted ? 0 : 1);
+}
 console.log("Decoy transformation checks OK");

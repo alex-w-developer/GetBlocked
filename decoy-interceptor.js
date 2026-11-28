@@ -14,6 +14,9 @@
   const nativeXhrSend = XMLHttpRequest.prototype.send;
   const nativeXhrSetRequestHeader = XMLHttpRequest.prototype.setRequestHeader;
   const nativeSendBeacon = Navigator.prototype.sendBeacon;
+  const MAX_BODY_BYTES = 64 * 1024;
+  const MAX_BODY_CHUNKS = 64;
+  const MAX_BODY_WAIT_MS = 50;
 
   function isReady() {
     return state.enabled && state.profile && typeof state.profile === "object";
@@ -71,71 +74,145 @@
 
   window.addEventListener("message", connectBridge);
 
+  // Request exposes even a string body as a stream. A slow or large upload
+  // must reach fetch without waiting for a complete buffered copy.
+  async function readSmallBody(request) {
+    const reader = request.clone().body.getReader();
+    const chunks = [];
+    let size = 0;
+    let complete = false;
+    let expired = false;
+    const stopReading = () => {
+      expired = true;
+      void reader.cancel().catch(() => {});
+    };
+    request.signal.addEventListener("abort", stopReading, { once: true });
+    const timeout = setTimeout(stopReading, MAX_BODY_WAIT_MS);
+    try {
+      while (true) {
+        const { done, value } = await reader.read();
+        if (expired) return null;
+        if (done) {
+          complete = true;
+          return new Blob(chunks);
+        }
+        size += value.byteLength;
+        if (size > MAX_BODY_BYTES || chunks.length >= MAX_BODY_CHUNKS) return null;
+        chunks.push(value);
+      }
+    } finally {
+      clearTimeout(timeout);
+      request.signal.removeEventListener("abort", stopReading);
+      if (!complete && !expired) void reader.cancel().catch(() => {});
+      reader.releaseLock();
+    }
+  }
+
+  // Web IDL reads RequestInit dictionary members by name. Delegate each
+  // option to the original object, including inherited options and getters.
+  function withBody(options, body, explicitOptions) {
+    return new Proxy({}, {
+      get(_, name) {
+        if (name === "body") return body;
+        return options && name in options ? options[name] : explicitOptions?.[name];
+      }
+    });
+  }
+
+  function supportsEmbeddedText(contentType) {
+    const charset = /;\s*charset\s*=\s*"?([^";\s]+)/.exec(contentType)?.[1];
+    return (!charset || charset === "utf-8" || charset === "utf8") &&
+      (contentType.includes("json") || contentType.startsWith("text/") ||
+       contentType.includes("application/x-www-form-urlencoded"));
+  }
+
+  function keepaliveBodyFits(body) {
+    const text = body instanceof URLSearchParams ? body.toString() : body;
+    return typeof text !== "string" ||
+      (text.length <= MAX_BODY_BYTES && new TextEncoder().encode(text).length <= MAX_BODY_BYTES);
+  }
+
+  async function rewriteEmbeddedRequest(request, init, urlResult, profile) {
+    const contentType = getContentType(request.headers).toLowerCase();
+    const inspectText = supportsEmbeddedText(contentType);
+    if (request.signal.aborted || (!inspectText && !urlResult.changed)) return null;
+
+    // Snapshot exposed Request options and explicit write-only RequestInit
+    // values (e.g. priority) before waiting for the body.
+    const destination = urlResult.changed
+      ? new Request(urlResult.value, withBody(request, null, init))
+      : request;
+    const bytes = await readSmallBody(request);
+    if (!bytes || request.signal.aborted) return null;
+    if (inspectText) {
+      let text;
+      try {
+        text = new TextDecoder("utf-8", { fatal: true }).decode(await bytes.arrayBuffer());
+      } catch {
+        // Preserve the exact bytes if only the URL can be changed.
+      }
+      if (text !== undefined) {
+        const result = transform.replaceText(text, profile, contentType);
+        if (result.changed && (!request.keepalive || keepaliveBodyFits(result.value))) {
+          return new Request(destination, { body: result.value });
+        }
+      }
+    }
+    return urlResult.changed ? new Request(destination, { body: bytes }) : null;
+  }
+
   if (typeof nativeFetch === "function") {
     globalThis.fetch = async function getBlockedDecoyFetch(input, init) {
-      const rawUrl = input instanceof Request ? input.url : String(input);
-      const trackerUrl = isReady() ? thirdPartyTrackerUrl(rawUrl) : null;
+      if (!isReady() || arguments.length === 0) return Reflect.apply(nativeFetch, this, arguments);
+      // Native fetch coerces a non-Request URL argument once.
+      const nativeInput = input instanceof Request ? input : `${input}`;
+      const rawUrl = nativeInput instanceof Request ? nativeInput.url : nativeInput;
+      const trackerUrl = thirdPartyTrackerUrl(rawUrl);
+      if (!trackerUrl) return Reflect.apply(nativeFetch, this, [nativeInput, init]);
 
-      if (!trackerUrl) {
-        return Reflect.apply(nativeFetch, this, arguments);
+      const profile = state.profile;
+      const urlResult = transform.replaceUrl(trackerUrl, profile);
+      if (input instanceof Request && input.body && init?.body == null) {
+        // Transfer the original body and capture caller options just as fetch
+        // would. A suspended, oversized or aborted upload keeps this Request.
+        const effective = new Request(input, init);
+        let rewritten;
+        try {
+          rewritten = await rewriteEmbeddedRequest(effective, init, urlResult, profile);
+        } catch {
+          // Some Request types cannot be rebuilt with a new URL.
+        }
+        if (rewritten) reportDecoyed(trackerUrl.hostname, "fetch");
+        return Reflect.apply(nativeFetch, this, [rewritten || effective]);
       }
 
-      let changed = false;
-      let nextInput = input;
+      // Native fetch snapshots a direct BodyInit, headers and options during
+      // the call. Dispatch this path before control returns to the caller.
+      let nextInput = nativeInput;
       let nextInit = init;
-      const urlResult = transform.replaceUrl(trackerUrl, state.profile);
-
-      if (urlResult.changed) {
-        changed = true;
-        nextInput =
-          input instanceof Request
-            ? new Request(urlResult.value, input)
-            : urlResult.value;
-      }
-
+      let changed = false;
       try {
-        const suppliedBody = init?.body;
-        const contentType = getContentType(init?.headers || input?.headers);
-
-        if (suppliedBody !== undefined && suppliedBody !== null) {
-          const bodyResult = transform.replaceBody(
-            suppliedBody,
-            state.profile,
-            contentType
-          );
-
-          if (bodyResult.changed) {
+        if (urlResult.changed) {
+          nextInput = input instanceof Request
+            ? new Request(urlResult.value, withBody(input, null))
+            : urlResult.value;
+          changed = true;
+        }
+        const keepalive = init?.keepalive ?? input?.keepalive;
+        // The UA chooses the multipart boundary and serialized length. Keep
+        // its original FormData so a valid keepalive upload stays in quota.
+        if (init?.body != null && !(keepalive && init.body instanceof FormData)) {
+          const result = transform.replaceBody(init.body, profile, getContentType(init.headers || input?.headers));
+          if (result.changed && (!keepalive || keepaliveBodyFits(result.value))) {
+            nextInit = withBody(init, result.value);
             changed = true;
-            nextInit = { ...(init || {}), body: bodyResult.value };
-          }
-        } else if (
-          input instanceof Request &&
-          !input.bodyUsed &&
-          !["GET", "HEAD"].includes(input.method.toUpperCase()) &&
-          (contentType.includes("json") ||
-            contentType.includes("application/x-www-form-urlencoded") ||
-            contentType.startsWith("text/"))
-        ) {
-          const bodyText = await input.clone().text();
-          const bodyResult = transform.replaceText(
-            bodyText,
-            state.profile,
-            contentType
-          );
-
-          if (bodyResult.changed) {
-            changed = true;
-            nextInit = { ...(init || {}), body: bodyResult.value };
           }
         }
-      } catch (error) {
-        // Unsupported, locked, or streaming bodies pass through unchanged.
+      } catch {
+        return Reflect.apply(nativeFetch, this, [nativeInput, init]);
       }
 
-      if (changed) {
-        reportDecoyed(trackerUrl.hostname, "fetch");
-      }
-
+      if (changed) reportDecoyed(trackerUrl.hostname, "fetch");
       return Reflect.apply(nativeFetch, this, [nextInput, nextInit]);
     };
   }
