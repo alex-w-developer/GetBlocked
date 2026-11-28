@@ -26,7 +26,7 @@ The popup toggle saves `getblockedDecoyMode` in `chrome.storage.local`. The back
 
 Document-start scripts run in all matching web frames. `decoy-interceptor.js` runs in the page's `MAIN` world so it can wrap page-owned `fetch`, `XMLHttpRequest`, and `navigator.sendBeacon`. `decoy-bridge.js` stays in the extension's isolated world and relays configuration and local counters to the service worker. A window message transfers a `MessageChannel` port once. The interceptor then uses that port for configuration and reports.
 
-Only third-party requests to exact domains and subdomains in `shared/tracker-catalog.json` are eligible, matching the scope of the blocking rule that Decoy Mode disables. Decoy Mode does not broaden the tracker catalog or alter first-party requests when a user visits a catalog domain directly.
+A request is eligible when its destination matches a catalog domain and the initiating frame belongs to a different registrable site. For example, a request from `app.segment.io` to `api.segment.io` stays first-party. Relative URLs resolve against the document’s current base URL, including a page’s `<base href>`. The frame’s origin supplies the site for comparison. The page scripts use catalog site metadata, which the browser test checks against Chrome DNR. [Catalog site boundaries](ADDING_TRACKERS.md)
 
 ## The Fake Session Profile
 

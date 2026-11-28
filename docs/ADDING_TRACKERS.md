@@ -13,6 +13,7 @@ Open [shared/tracker-catalog.json](../shared/tracker-catalog.json).
 Add one tracker entry with:
 
 - `domain`
+- `site` when the tracker is a subdomain of its registrable site
 - `category`
 - `label`
 - `notes`
@@ -31,11 +32,14 @@ Example tracker entry:
 ```json
 {
   "domain": "tracker.example.com",
+  "site": "example.com",
   "category": "Analytics",
   "label": "Example Analytics",
   "notes": "Product analytics collection endpoint"
 }
 ```
+
+Choose the registrable site using the public and private sections of the Public Suffix List. For example, `api.vendor.co.uk` has site `vendor.co.uk`, while a tracker served from the tenant `vendor.github.io` uses that entire hostname as its site. Omitting `site` uses `domain` itself. Keep entries below public or private suffixes and check for delegated suffixes within a proposed tracker site. The page scripts use this catalog metadata to compare the initiating frame and destination locally. Chrome applies its own current suffix data to actual blocking. [Public Suffix List](https://publicsuffix.org/list/)
 
 Keep the domain narrow. Avoid broad platform domains, login providers, payment processors, captcha services, and core CDNs.
 
@@ -87,7 +91,7 @@ npm run test:evidence
 
 Confirm the new fixture is blocked and category coverage still looks correct.
 
-Requests with `tracker: true` must be blocked; requests with `tracker: false` must remain unblocked. Either mismatch fails the command and prints the fixture, request URL, page URL, and expected result. Add negative fixtures for nearby legitimate hosts where useful. This evaluator approximates DNR matching; it does not replace browser verification of registrable-domain/third-party behavior.
+Requests with `tracker: true` must be blocked; requests with `tracker: false` must remain unblocked. Either mismatch fails the command and prints the fixture, request URL, page URL, and expected result. Add negative fixtures for nearby legitimate hosts where useful. The browser test checks each catalog entry against Chrome’s DNR matcher using hypothetical same-site and cross-site requests. Run it when adding or updating a site boundary.
 
 Also run the full suite so catalog scoping and Decoy Mode safety checks remain covered:
 

@@ -1,5 +1,5 @@
 (function installGetBlockedDecoyInterceptor() {
-  const { TRACKER_DOMAINS } = globalThis.GetBlockedConfig;
+  const { catalogHostname, isThirdPartyTrackerHost } = globalThis.GetBlockedTrackerScope;
   const transform = globalThis.GetBlockedDecoyTransform;
   const BRIDGE_CHANNEL = "getblocked-decoy-bridge-v1";
   const xhrState = new WeakMap();
@@ -27,25 +27,20 @@
     }
   }
 
-  function trackerHostname(rawUrl) {
+  function thirdPartyTrackerUrl(rawUrl) {
     try {
-      const url = new URL(rawUrl, window.location.href);
-      return transform.isThirdPartyTrackerUrl(
-        rawUrl,
-        window.location.href,
-        TRACKER_DOMAINS
-      )
-        ? url.hostname.toLowerCase()
-        : "";
+      const url = new URL(rawUrl, document.baseURI);
+      const initiatorHost = window.origin === "null" ? "" : new URL(window.origin).hostname;
+      return isThirdPartyTrackerHost(url.hostname, initiatorHost) ? url : null;
     } catch (error) {
-      return "";
+      return null;
     }
   }
 
   function reportDecoyed(hostname, transport) {
     bridgePort?.postMessage({
       type: "request-decoyed",
-      hostname,
+      hostname: catalogHostname(hostname),
       transport
     });
   }
@@ -79,20 +74,16 @@
   if (typeof nativeFetch === "function") {
     globalThis.fetch = async function getBlockedDecoyFetch(input, init) {
       const rawUrl = input instanceof Request ? input.url : String(input);
-      const hostname = isReady() ? trackerHostname(rawUrl) : "";
+      const trackerUrl = isReady() ? thirdPartyTrackerUrl(rawUrl) : null;
 
-      if (!hostname) {
+      if (!trackerUrl) {
         return Reflect.apply(nativeFetch, this, arguments);
       }
 
       let changed = false;
       let nextInput = input;
       let nextInit = init;
-      const urlResult = transform.replaceUrl(
-        rawUrl,
-        window.location.href,
-        state.profile
-      );
+      const urlResult = transform.replaceUrl(trackerUrl, state.profile);
 
       if (urlResult.changed) {
         changed = true;
@@ -142,7 +133,7 @@
       }
 
       if (changed) {
-        reportDecoyed(hostname, "fetch");
+        reportDecoyed(trackerUrl.hostname, "fetch");
       }
 
       return Reflect.apply(nativeFetch, this, [nextInput, nextInit]);
@@ -154,16 +145,12 @@
     rawUrl,
     ...rest
   ) {
-    const hostname = trackerHostname(rawUrl);
+    const trackerUrl = thirdPartyTrackerUrl(rawUrl);
     let nextUrl = rawUrl;
     let changed = false;
 
-    if (isReady() && hostname) {
-      const result = transform.replaceUrl(
-        rawUrl,
-        window.location.href,
-        state.profile
-      );
+    if (isReady() && trackerUrl) {
+      const result = transform.replaceUrl(trackerUrl, state.profile);
       nextUrl = result.value;
       changed = result.changed;
     }
@@ -171,7 +158,7 @@
     xhrState.set(this, {
       changed,
       headers: {},
-      hostname,
+      hostname: trackerUrl?.hostname,
       reported: false
     });
 
@@ -216,21 +203,17 @@
       rawUrl,
       body
     ) {
-      const hostname = isReady() ? trackerHostname(rawUrl) : "";
+      const trackerUrl = isReady() ? thirdPartyTrackerUrl(rawUrl) : null;
 
-      if (!hostname) {
+      if (!trackerUrl) {
         return Reflect.apply(nativeSendBeacon, this, arguments);
       }
 
-      const urlResult = transform.replaceUrl(
-        rawUrl,
-        window.location.href,
-        state.profile
-      );
+      const urlResult = transform.replaceUrl(trackerUrl, state.profile);
       const bodyResult = transform.replaceBody(body, state.profile);
 
       if (urlResult.changed || bodyResult.changed) {
-        reportDecoyed(hostname, "beacon");
+        reportDecoyed(trackerUrl.hostname, "beacon");
       }
 
       return Reflect.apply(nativeSendBeacon, this, [
