@@ -185,6 +185,44 @@ test("JSON checker identifies malformed and missing files and preserves valid ou
   assert.match(missing.output, /manifest\.json: .*ENOENT/);
 });
 
+test("JSON checker enforces matching manifest and package versions", (t) => {
+  const dir = tempDir(t);
+  const files = [
+    "manifest.json",
+    "rules/rules.json",
+    "rules/unsafe.json",
+    "shared/unsafe-domains.json",
+    "shared/tracker-catalog.json",
+    "shared/tracking-params.json",
+    "test/tracker-test-set.json",
+    "package.json"
+  ];
+  const checker = path.join(root, "scripts/check-json.mjs");
+
+  function writeFixture(manifestVersion, packageVersion) {
+    for (const file of files) {
+      const filePath = path.join(dir, file);
+      fs.mkdirSync(path.dirname(filePath), { recursive: true });
+      fs.writeFileSync(filePath, "{}\n");
+    }
+    fs.writeFileSync(path.join(dir, "manifest.json"), `${JSON.stringify({ version: manifestVersion })}\n`);
+    fs.writeFileSync(path.join(dir, "package.json"), `${JSON.stringify({ version: packageVersion })}\n`);
+  }
+
+  writeFixture("0.2.0", "0.2.0");
+  const matching = run(checker, [dir]);
+  assert.equal(matching.status, 0, matching.output);
+  assert.match(matching.output, /JSON OK \(8 files\)/);
+
+  writeFixture("0.2.0", "0.2.1");
+  const mismatched = run(checker, [dir]);
+  assert.equal(mismatched.status, 1, mismatched.output);
+  assert.match(mismatched.output, /manifest\.json/);
+  assert.match(mismatched.output, /package\.json/);
+  assert.match(mismatched.output, /0\.2\.0/);
+  assert.match(mismatched.output, /0\.2\.1/);
+});
+
 test("content scan resolves relative resources against the document base URI", () => {
   const config = readJson("shared/tracker-catalog.json");
   const trackerDomain = config.trackers[0].domain;
