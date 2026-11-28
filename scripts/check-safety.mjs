@@ -16,6 +16,7 @@ const sourceFiles = [
   "rules/unsafe.json",
   "shared/unsafe-domains.json",
   "shared/config.js",
+  "shared/tracker-scope.js",
   "shared/decoy-transform.js",
   "shared/tracker-catalog.json",
   "shared/tracking-params.json",

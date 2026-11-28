@@ -1,8 +1,8 @@
 (function scanForTrackingSignals() {
-  const { TRACKING_PARAMS, TRACKER_DOMAINS, TRACKER_CATEGORIES } =
+  const { TRACKING_PARAMS, TRACKER_CATEGORIES } =
     globalThis.GetBlockedConfig;
   const trackedParamSet = new Set(TRACKING_PARAMS);
-  const trackerDomainSet = new Set(TRACKER_DOMAINS);
+  const { catalogHostname, isThirdPartyTrackerHost } = globalThis.GetBlockedTrackerScope;
   const TRACKABLE_SELECTOR =
     "a[href],area[href],form[action],img[src],iframe[src],script[src],link[href]";
 
@@ -65,12 +65,6 @@
     return false;
   }
 
-  function isKnownTrackerHost(hostname) {
-    return Array.from(trackerDomainSet).some((domain) => {
-      return hostname === domain || hostname.endsWith(`.${domain}`);
-    });
-  }
-
   function getTrackerCategories(hostname) {
     const categories = [];
 
@@ -85,17 +79,6 @@
     }
 
     return categories;
-  }
-
-  function isApproxThirdParty(url) {
-    const pageHost = window.location.hostname.toLowerCase();
-    const requestHost = url.hostname.toLowerCase();
-
-    return (
-      requestHost !== pageHost &&
-      !requestHost.endsWith(`.${pageHost}`) &&
-      !pageHost.endsWith(`.${requestHost}`)
-    );
   }
 
   function isVisible(element) {
@@ -126,6 +109,7 @@
     }
 
     try {
+      const initiatorHost = window.origin === "null" ? "" : window.location.hostname;
       const elements = Array.from(document.querySelectorAll(TRACKABLE_SELECTOR));
       const trackerResourceUrls = new Set();
       const detectedCategories = new Set();
@@ -145,7 +129,7 @@
         }
 
         const knownTrackerResource =
-          isKnownTrackerHost(url.hostname) && isApproxThirdParty(url);
+          isThirdPartyTrackerHost(url.hostname, initiatorHost);
         const trackingLink =
           element.matches("a[href],area[href],form[action]") &&
           hasTrackingParams(url);
@@ -157,7 +141,7 @@
 
         if (knownTrackerResource) {
           trackerElements += 1;
-          for (const category of getTrackerCategories(url.hostname)) {
+          for (const category of getTrackerCategories(catalogHostname(url.hostname))) {
             detectedCategories.add(category);
           }
 

@@ -12,7 +12,8 @@
       "domain": "api.segment.io",
       "category": "Analytics",
       "label": "Segment API",
-      "notes": "Customer data and analytics collection"
+      "notes": "Customer data and analytics collection",
+      "site": "segment.io"
     },
     {
       "domain": "google-analytics.com",
@@ -79,7 +80,8 @@
       "category": "Analytics",
       "label": "Google Analytics DoubleClick",
       "notes": "Google Analytics advertising/measurement endpoint",
-      "redundancyReason": "Retains the Analytics category for this endpoint; doubleclick.net is categorized as Ad tracking."
+      "redundancyReason": "Retains the Analytics category for this endpoint; doubleclick.net is categorized as Ad tracking.",
+      "site": "doubleclick.net"
     },
     {
       "domain": "adnxs.com",
@@ -109,7 +111,8 @@
       "domain": "bat.bing.com",
       "category": "Ad tracking",
       "label": "Microsoft Advertising",
-      "notes": "Ad conversion tracking"
+      "notes": "Ad conversion tracking",
+      "site": "bing.com"
     },
     {
       "domain": "bidswitch.net",
@@ -217,37 +220,43 @@
       "domain": "ads.linkedin.com",
       "category": "Social pixel",
       "label": "LinkedIn Ads",
-      "notes": "Social advertising pixel. Includes LinkedIn Insight (px.ads.linkedin.com): Social conversion pixel."
+      "notes": "Social advertising pixel. Includes LinkedIn Insight (px.ads.linkedin.com): Social conversion pixel.",
+      "site": "linkedin.com"
     },
     {
       "domain": "ads.tiktok.com",
       "category": "Social pixel",
       "label": "TikTok Ads",
-      "notes": "Social advertising pixel"
+      "notes": "Social advertising pixel",
+      "site": "tiktok.com"
     },
     {
       "domain": "analytics.pinterest.com",
       "category": "Social pixel",
       "label": "Pinterest Analytics",
-      "notes": "Social analytics pixel"
+      "notes": "Social analytics pixel",
+      "site": "pinterest.com"
     },
     {
       "domain": "analytics.tiktok.com",
       "category": "Social pixel",
       "label": "TikTok Analytics",
-      "notes": "Social analytics pixel"
+      "notes": "Social analytics pixel",
+      "site": "tiktok.com"
     },
     {
       "domain": "analytics.twitter.com",
       "category": "Social pixel",
       "label": "Twitter Analytics",
-      "notes": "Social analytics pixel"
+      "notes": "Social analytics pixel",
+      "site": "twitter.com"
     },
     {
       "domain": "ct.pinterest.com",
       "category": "Social pixel",
       "label": "Pinterest Conversion Tag",
-      "notes": "Social conversion pixel"
+      "notes": "Social conversion pixel",
+      "site": "pinterest.com"
     },
     {
       "domain": "facebook.net",
@@ -265,20 +274,23 @@
       "domain": "snap.licdn.com",
       "category": "Social pixel",
       "label": "LinkedIn Insight Tag",
-      "notes": "Social analytics pixel"
+      "notes": "Social analytics pixel",
+      "site": "licdn.com"
     },
     {
       "domain": "static.ads-twitter.com",
       "category": "Social pixel",
       "label": "Twitter Ads Static",
       "notes": "Social advertising script",
-      "redundancyReason": "Retains the Social pixel category for this endpoint; ads-twitter.com is categorized as Ad tracking."
+      "redundancyReason": "Retains the Social pixel category for this endpoint; ads-twitter.com is categorized as Ad tracking.",
+      "site": "ads-twitter.com"
     },
     {
       "domain": "tr.snapchat.com",
       "category": "Social pixel",
       "label": "Snapchat Pixel",
-      "notes": "Social conversion pixel"
+      "notes": "Social conversion pixel",
+      "site": "snapchat.com"
     },
     {
       "domain": "clarity.ms",
