@@ -492,9 +492,9 @@ async function main() {
       "--disable-popup-blocking",
       "--allow-running-insecure-content",
       "--headless=new",
-      // Resolve these exact listed hosts only to the local fixture server.
-      `--host-resolver-rules=MAP ${COMMUNITY_HOST} 127.0.0.1, MAP child.${COMMUNITY_HOST} 127.0.0.1`,
-      `--proxy-bypass-list=${COMMUNITY_HOST};child.${COMMUNITY_HOST}`,
+      // All fixture names resolve locally even when blocking is turned off.
+      "--host-resolver-rules=MAP * 127.0.0.1",
+      "--no-proxy-server",
       ...(process.env.CHROME_NO_SANDBOX === "1" ? ["--no-sandbox"] : []),
     ];
 
@@ -566,8 +566,7 @@ async function main() {
     );
 
     const pageTarget =
-      allTargets.find((t) => t.targetId === tabTargetId) ||
-      allTargets.find((t) => t.type === "page" && t.url === "about:blank");
+      allTargets.find((t) => t.id === tabTargetId);
 
     if (!pageTarget || !pageTarget.webSocketDebuggerUrl) {
       throw new Error(
@@ -683,8 +682,8 @@ async function main() {
       await sleep(500);
       const popupTargets = await cdpHttpGet(DEBUG_PORT, "/json/list");
       const popupTarget = popupTargets.find(
-        (target) => target.targetId === popupTargetResult.targetId
-      ) || popupTargets.find((target) => target.url === popupUrl);
+        (target) => target.id === popupTargetResult.targetId
+      );
       if (!popupTarget?.webSocketDebuggerUrl) {
         throw new Error(
           `Could not open the extension popup page: ${popupTargets
@@ -867,6 +866,14 @@ async function main() {
         check("Background report: valid response", false, JSON.stringify(report));
       }
 
+      const fixturePolicy = await pageCdp.send("Runtime.evaluate", {
+        expression: 'document.querySelector(\'meta[http-equiv="Content-Security-Policy"]\').content',
+        returnByValue: true
+      });
+      check("Manual fixture restricts scripts to its own origin and denies external connections",
+        fixturePolicy.result.value.split(";").map(part => part.trim()).includes("default-src 'none'") &&
+        fixturePolicy.result.value.includes("script-src 'self'") &&
+        !fixturePolicy.result.value.includes("connect-src"));
       const enabledPopup = await evaluatePopup(`
         (async () => {
           const toggle = document.querySelector("#decoy-mode-toggle");
@@ -939,6 +946,10 @@ async function main() {
         const tabs = await chrome.tabs.query({});
         return tabs.find(tab => String(tab.url || '').startsWith('http://localhost:${TEST_PORT}/'))?.id;
       })()`);
+      await secondPageCdp.send("Runtime.evaluate", {
+        expression: 'document.querySelector("#exercise-decoy").click()'
+      });
+      await sleep(500);
       const secondReport = await evaluateExtension(`getReport(${JSON.stringify(secondTabId)})`);
       check("Decoy Mode: global preference applies to a different site",
         secondReport?.decoyMode === true && secondReport.page?.decoyedRequests > 0,
@@ -973,6 +984,10 @@ async function main() {
         JSON.stringify(decoySearch.getAll("ref")) === JSON.stringify(["invite42", "chapter2"]) &&
         decoySearch.get("route") === "reader");
 
+      await pageCdp.send("Runtime.evaluate", {
+        expression: 'document.querySelector("#exercise-decoy").click()'
+      });
+      await sleep(500);
       const decoyReport = await evaluateExtension(`
         getReport(${JSON.stringify(tabId)}).then((report) => ({ ok: true, report }))
       `);

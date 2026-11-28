@@ -2,6 +2,9 @@
 <html lang="en">
   <head>
     <meta charset="utf-8">
+    <meta http-equiv="Content-Security-Policy"
+      content="default-src 'none'; script-src 'self'; style-src 'unsafe-inline'; base-uri 'none'; form-action 'none'">
+    <meta http-equiv="x-dns-prefetch-control" content="off">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>GetBlocked! Manual Test Page</title>
     <script src="https://www.google-analytics.com/analytics.js"></script>
@@ -24,9 +27,10 @@
   </head>
   <body>
     <h1>GetBlocked! Manual Test Page</h1>
-    <p>This local fixture intentionally attempts several common tracker requests.</p>
+    <p>This page contains example tracker URLs. Its content security policy blocks external resources and connections.</p>
+    <button type="button" id="exercise-decoy">Try the three Decoy request formats</button>
     <p>
-      <a href="https://example.com/deal?utm_source=test&utm_medium=manual&fbclid=abc">
+      <a href="./manual-test.html?utm_source=test&utm_medium=manual&fbclid=abc">
         Visible link with tracking parameters
       </a>
     </p>
@@ -42,30 +46,6 @@
       width="300"
       height="80"
     ></iframe>
-    <script>
-      fetch("https://api.segment.io/v1/p?anonymous_id=real-browser-fixture", {
-        body: JSON.stringify({
-          event: "page_view",
-          user_id: "real-browser-fixture",
-          traits: { email: "browser-fixture@example.com" }
-        }),
-        headers: { "content-type": "text/plain" },
-        method: "POST",
-        mode: "no-cors"
-      }).catch(() => {});
-
-      const xhr = new XMLHttpRequest();
-      xhr.open(
-        "POST",
-        "https://api.segment.io/v1/track?client_id=real-browser-fixture"
-      );
-      xhr.setRequestHeader("content-type", "application/x-www-form-urlencoded");
-      xhr.send("event=page_view&device_id=real-browser-fixture");
-
-      navigator.sendBeacon?.(
-        "https://analytics.twitter.com/i/adsct?cid=real-browser-fixture",
-        "event=page_view&session_id=real-browser-fixture"
-      );
-    </script>
+    <script src="manual-requests.js"></script>
   </body>
 </html>
