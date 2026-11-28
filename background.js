@@ -281,8 +281,16 @@ async function setDecoyMode(enabled) {
   return { enabled, profile };
 }
 
-async function getDecoyConfiguration(topLevelUrl) {
-  const enabled = await getDecoyMode() && (await getSiteProtection(topLevelUrl))?.enabled !== false;
+async function getDecoyConfiguration(sender) {
+  await updateQueue;
+  let enabled = await getDecoyMode();
+  if (enabled && sender) {
+    // New frames and global mode changes follow their current document until
+    // its next top-level navigation, even if the user just saved an exception.
+    const { sitePaused } = await getTabStats(sender.tab.id);
+    const topLevelUrl = sender.frameId === 0 ? sender.url : sender.tab.url;
+    enabled = sitePaused === undefined ? (await getSiteProtection(topLevelUrl))?.enabled !== false : !sitePaused;
+  }
   return {
     enabled,
     profile: enabled ? await ensureDecoySessionProfile() : null
@@ -369,6 +377,7 @@ async function updateTabStats(tabId, updater) {
 
   const tabStats = await getAllTabStats();
   const current = normalizeTabStats(tabStats[String(tabId)]);
+  if (current.sitePaused) return current;
   const next = normalizeTabStats({
     ...current,
     ...updater(current),
@@ -466,7 +475,6 @@ async function clearTransientLocalData() {
 }
 
 async function updatePageSignals(tabId, signals) {
-  if ((await getTabStats(tabId)).sitePaused) return;
   const detectedCategories = Array.isArray(signals.detectedCategories)
     ? signals.detectedCategories.filter((category) => {
         return typeof category === "string" && category.length > 0;
@@ -498,7 +506,7 @@ async function updatePageSignals(tabId, signals) {
 }
 
 async function recordDecoyedRequests(tabId, message) {
-  if (!(await getDecoyMode()) || (await getTabStats(tabId)).sitePaused) return;
+  if (!(await getDecoyMode())) return;
   await updateTabStats(tabId, (current) => ({
     decoyedRequests: current.decoyedRequests + message.count,
     detectedCategories: Array.from(
@@ -608,7 +616,7 @@ function handleMessage(message, sender, sendResponse) {
       sendResponse({ ok: false, error: "Invalid Decoy configuration request" });
       return false;
     }
-    getDecoyConfiguration(sender.frameId === 0 ? sender.url : sender.tab?.url)
+    getDecoyConfiguration(sender)
       .then((configuration) => sendResponse({
         ok: true, configuration, reportDomains: configuration.enabled ? TRACKER_DOMAINS : []
       }))

@@ -511,9 +511,18 @@ test("site exceptions stay exact, persist across workers, and require an active 
   const restarted = startBackground(localData, rules);
   assert.equal((await site(restarted)).enabled, false);
   for (const [hostname, expected] of [["shop.example.test", false], ["sub.shop.example.test", true]]) {
-    const config = await vm.runInContext(`getDecoyConfiguration("https://${hostname}/")`, restarted.context);
+    const { configuration: config } = await restarted.message({ type: "GETBLOCKED_DECOY_CONFIG" },
+      { id: "test-extension", tab: { id: 1 }, frameId: 0, url: `https://${hostname}/` });
     assert.equal(config.enabled, expected);
     if (!expected) assert.equal(config.profile, null);
+  }
+  // Site changes apply to fresh top-level navigations. Embeds created while a
+  // reload is pending still receive their existing document's configuration.
+  for (const sitePaused of [true, false]) {
+    localData.getblockedTabStats = { 1: { sitePaused } };
+    const { configuration } = await restarted.message({ type: "GETBLOCKED_DECOY_CONFIG" },
+      { id: "test-extension", tab: { id: 1, url: "https://shop.example.test/" }, frameId: 2 });
+    assert.equal(configuration.enabled, !sitePaused);
   }
   worker.rejectRules();
   assert.equal((await worker.message({ ...message, enabled: true }, popup)).ok, false);
