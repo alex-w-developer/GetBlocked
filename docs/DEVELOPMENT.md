@@ -162,6 +162,8 @@ The normal-mode estimate comes from unique resource URLs on known tracker domain
 
 The popup also owns the **Decoy Mode (Experimental)** toggle. It controls all websites, not just the current tab. A permanent description explains that enabling it pauses tracker blocking everywhere; the enabled description and footer repeat that scope and the network privacy limits. It asks the service worker to update the static-rule state before the saved setting changes, then refreshes the report. The global preference is reapplied on browser startup and extension install/update.
 
+The **Site protection** switch uses one dynamic `allowAllRequests` rule per paused hostname. In `site-protection.js`, an escaped, anchored HTTP(S) URL expression matches only top-level visits to that hostname across ports. The frame and its descendants inherit the exception. The rule's priority of 2 takes precedence over the catalog block (1) and URL cleanup redirect (2), while the optional community block (3) still applies. Chrome persists dynamic rules across restarts and extension updates, so the rules themselves hold the exception list. Chrome limits dynamic regex rules to 1,000. Failed updates leave the previous rules in force and the popup reloads their state. [Chrome rule evaluation and limits](https://developer.chrome.com/docs/extensions/reference/api/declarativeNetRequest#rule-evaluation)
+
 ## How Content-Script Detection Works
 
 `content-script.js` scans the current page for:

@@ -14,6 +14,10 @@ const decoyModeDescriptionEl = document.querySelector(
 );
 const unsafeDomainsToggleEl = document.querySelector("#unsafe-domains-toggle");
 const unsafeDomainsDescriptionEl = document.querySelector("#unsafe-domains-description");
+const siteProtectionToggleEl = document.querySelector("#site-protection-toggle");
+const siteProtectionDescriptionEl = document.querySelector("#site-protection-description");
+let reportedTabId;
+let reportedSite;
 
 function formatCount(value) {
   return new Intl.NumberFormat().format(Number(value) || 0);
@@ -32,10 +36,10 @@ function queryActiveTab() {
   });
 }
 
-function requestReport(tabId) {
+function sendPopupMessage(message) {
   return new Promise((resolve, reject) => {
     chrome.runtime.sendMessage(
-      { type: "GETBLOCKED_REPORT", tabId },
+      message,
       (response) => {
         const error = chrome.runtime.lastError;
         if (error) {
@@ -44,33 +48,11 @@ function requestReport(tabId) {
         }
 
         if (!response?.ok) {
-          reject(new Error(response?.error || "Report unavailable"));
+          reject(new Error(response?.error || "Extension request failed"));
           return;
         }
 
-        resolve(response.report);
-      }
-    );
-  });
-}
-
-function setDecoyMode(enabled) {
-  return new Promise((resolve, reject) => {
-    chrome.runtime.sendMessage(
-      { type: "SET_GETBLOCKED_DECOY_MODE", enabled },
-      (response) => {
-        const error = chrome.runtime.lastError;
-        if (error) {
-          reject(error);
-          return;
-        }
-
-        if (!response?.ok) {
-          reject(new Error(response?.error || "Unable to update Decoy Mode"));
-          return;
-        }
-
-        resolve(response.configuration);
+        resolve(response);
       }
     );
   });
@@ -103,6 +85,7 @@ function renderReport(report) {
   }
 
   decoyModeToggleEl.checked = decoyMode === true;
+  decoyModeToggleEl.disabled = false;
   renderUnsafeDomainSetting(report.unsafeDomainBlocking === true);
   unsafeDomainsToggleEl.disabled = false;
   footerEl.classList.toggle("is-warning", decoyMode === true);
@@ -110,15 +93,28 @@ function renderReport(report) {
   if (decoyMode) {
     modeSummaryEl.textContent = "Decoy Mode is on for all websites.";
     decoyModeDescriptionEl.textContent =
-      "On for all websites: tracker blocking is paused, URL cleanup stays on, and supported analytics identifiers are replaced.";
+      "On for all websites. Where site protection is enabled, URLs are cleaned and supported analytics identifiers are replaced.";
     statusLineEl.textContent =
       "Tracker blocking is paused on all websites. Trackers may still see your IP address and other network metadata.";
   } else {
     modeSummaryEl.textContent = "Blocking known trackers and cleaning URLs.";
     decoyModeDescriptionEl.textContent =
-      "Off: known third-party tracker requests are blocked on all websites.";
+      "Off for all websites. Known third-party tracker requests are blocked where site protection is enabled.";
     statusLineEl.textContent =
       "GetBlocked! keeps its report data on your device.";
+  }
+  reportedSite = report.site;
+  siteProtectionToggleEl.disabled = !reportedSite;
+  siteProtectionToggleEl.checked = reportedSite?.enabled === true;
+  siteProtectionDescriptionEl.textContent = reportedSite
+    ? `${reportedSite.hostname} only. Reload its open tabs after changing this setting. The community list keeps its own setting.`
+    : "Open an HTTP or HTTPS page to change protection for its hostname.";
+  if (reportedSite && (page.sitePaused || !reportedSite.enabled)) {
+    if (reportedSite.enabled) {
+      modeSummaryEl.textContent = "Site protection enabled. Reload to apply.";
+    } else {
+      modeSummaryEl.textContent = page.sitePaused ? "Site protection is paused on this page." : "Site pause saved. Reload to apply.";
+    }
   }
 }
 
@@ -129,67 +125,53 @@ function renderUnsafeDomainSetting(enabled) {
     : "Off: the community list is disabled. It is bundled locally and is not updated automatically.";
 }
 
-function setUnsafeDomainBlocking(enabled) {
-  return new Promise((resolve, reject) => {
-    chrome.runtime.sendMessage(
-      { type: "SET_GETBLOCKED_UNSAFE_DOMAINS", enabled },
-      (response) => {
-        const error = chrome.runtime.lastError;
-        if (error || !response?.ok) {
-          reject(new Error(error?.message || response?.error || "Unable to update the community list"));
-          return;
-        }
-        resolve(response.configuration);
-      }
-    );
-  });
-}
-
-async function handleUnsafeDomainsChange() {
-  const enabled = unsafeDomainsToggleEl.checked;
-  unsafeDomainsToggleEl.disabled = true;
-  try {
-    const configuration = await setUnsafeDomainBlocking(enabled);
-    renderUnsafeDomainSetting(configuration.enabled);
-  } catch (error) {
-    renderUnsafeDomainSetting(!enabled);
-    statusLineEl.textContent = "Community list could not be updated. Try again.";
-  } finally {
-    unsafeDomainsToggleEl.disabled = false;
-  }
-}
-
 async function loadReport() {
   try {
     const tab = await queryActiveTab();
-    if (!tab?.id) {
+    if (!Number.isInteger(tab?.id)) {
       throw new Error("No active page found");
     }
 
-    const report = await requestReport(tab.id);
+    const { report } = await sendPopupMessage({ type: "GETBLOCKED_REPORT", tabId: tab.id });
     renderReport(report);
+    reportedTabId = tab.id;
+    return true;
   } catch (error) {
-    statusLineEl.textContent = "Open a web page to see a local report.";
+    modeSummaryEl.textContent = "Protection settings unavailable.";
+    statusLineEl.textContent = "Could not load the local report. Reopen the popup to try again.";
+    decoyModeToggleEl.disabled = true;
+    decoyModeDescriptionEl.textContent = "Decoy Mode setting unavailable.";
+    siteProtectionToggleEl.disabled = true;
+    siteProtectionDescriptionEl.textContent = "Site setting unavailable.";
     unsafeDomainsToggleEl.disabled = true;
     unsafeDomainsDescriptionEl.textContent = "List setting unavailable. Reopen the popup to try again.";
+    return false;
   }
 }
 
-async function handleDecoyModeChange() {
-  const enabled = decoyModeToggleEl.checked;
+async function changeSetting(message, settingName) {
   decoyModeToggleEl.disabled = true;
-
+  unsafeDomainsToggleEl.disabled = true;
+  siteProtectionToggleEl.disabled = true;
   try {
-    await setDecoyMode(enabled);
-    await loadReport();
+    await sendPopupMessage(message);
   } catch (error) {
-    decoyModeToggleEl.checked = !enabled;
-    statusLineEl.textContent = "Decoy Mode could not be updated. Try again.";
-  } finally {
-    decoyModeToggleEl.disabled = false;
+    if (await loadReport()) {
+      statusLineEl.textContent = `${settingName} could not be updated. ${error.message}`;
+    }
+    return;
   }
+  await loadReport();
 }
 
 document.addEventListener("DOMContentLoaded", loadReport);
-decoyModeToggleEl.addEventListener("change", handleDecoyModeChange);
-unsafeDomainsToggleEl.addEventListener("change", handleUnsafeDomainsChange);
+decoyModeToggleEl.addEventListener("change", () => changeSetting({
+  type: "SET_GETBLOCKED_DECOY_MODE", enabled: decoyModeToggleEl.checked
+}, "Decoy Mode"));
+unsafeDomainsToggleEl.addEventListener("change", () => changeSetting({
+  type: "SET_GETBLOCKED_UNSAFE_DOMAINS", enabled: unsafeDomainsToggleEl.checked
+}, "Community list"));
+siteProtectionToggleEl.addEventListener("change", () => changeSetting({
+  type: "SET_GETBLOCKED_SITE_PROTECTION", tabId: reportedTabId,
+  hostname: reportedSite?.hostname, enabled: siteProtectionToggleEl.checked
+}, "Site protection"));

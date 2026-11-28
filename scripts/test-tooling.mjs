@@ -410,7 +410,51 @@ test("catalog audit retains only explained overlaps and their category mappings"
     assert.deepEqual(actual, expected);
   }
 });
-function startBackground(localData = {}) {
+test("Decoy switch waits for a saved setting and stays unavailable on report failure", async () => {
+  const markup = fs.readFileSync(path.join(root, "popup/popup.html"), "utf8");
+  const source = fs.readFileSync(path.join(root, "popup/popup.js"), "utf8");
+  assert.match(markup, /<input id="decoy-mode-toggle"[^>]+\bdisabled\b/);
+  assert.match(markup, /id="decoy-mode-description">\s*Loading/);
+  const elements = new Map();
+  function select(selector) {
+    if (!elements.has(selector)) {
+      elements.set(selector, {
+        disabled: true, checked: false, classList: { toggle() {} }, addEventListener() {},
+        replaceChildren(first) { this.firstElementChild = first; }
+      });
+    }
+    return elements.get(selector);
+  }
+  let load;
+  let reply;
+  const document = {
+    querySelector: select, createElement: () => ({}),
+    addEventListener: (_, callback) => { load = callback; }
+  };
+  const chrome = {
+    tabs: { query: (_, callback) => callback([{ id: 0 }]) },
+    runtime: { sendMessage: (_, callback) => { reply = callback; } }
+  };
+  vm.runInNewContext(source, { document, chrome });
+  const toggle = select("#decoy-mode-toggle");
+  const loading = load();
+  await Promise.resolve();
+  assert.equal(toggle.disabled, true);
+  reply({ ok: false });
+  await loading;
+  assert.equal(toggle.disabled, true);
+  assert.match(select("#decoy-mode-description").textContent, /unavailable/);
+
+  const retry = load();
+  await Promise.resolve();
+  reply({ ok: true, report: { page: {}, decoyMode: true } });
+  await retry;
+  assert.equal(toggle.disabled, false);
+  assert.equal(toggle.checked, true);
+  assert.match(select("#decoy-mode-description").textContent, /all websites/);
+});
+
+function startBackground(localData = {}, dynamicRules = []) {
     const listeners = {};
     const event = name => ({ addListener: listener => { listeners[name] = listener; } });
     const area = data => ({
@@ -433,6 +477,12 @@ function startBackground(localData = {}) {
         declarativeNetRequest: {
           setExtensionActionOptions: (_, callback) => callback(),
           getEnabledRulesets: async () => [...enabledRulesets],
+          getDynamicRules: async () => [...dynamicRules],
+          updateDynamicRules: async ({ removeRuleIds = [], addRules = [] }) => {
+            if (rejectRuleUpdate) throw new Error("Simulated rule failure");
+            const retained = dynamicRules.filter(rule => !removeRuleIds.includes(rule.id));
+            dynamicRules.splice(0, dynamicRules.length, ...retained, ...addRules);
+          },
           updateEnabledRulesets: async ({ enableRulesetIds, disableRulesetIds }) => {
             if (rejectRuleUpdate) throw new Error("Simulated rule failure");
             for (const id of enableRulesetIds) enabledRulesets.add(id);
@@ -445,7 +495,8 @@ function startBackground(localData = {}) {
           }
         },
         webNavigation: { onBeforeNavigate: event("before"), onCommitted: event("committed") },
-        tabs: { onRemoved: event("removed") }
+        tabs: { onRemoved: event("removed"),
+          get: async id => ({ id, active: true, url: "https://shop.example.test/cart" }) }
       }
     });
     const normalSet = context.chrome.storage.local.set;
@@ -489,6 +540,63 @@ test("global Decoy preference reapplies catalog rules on startup and extension u
     assert.equal(normalRestart.disabledRules.size, 0);
     await vm.runInContext("setDecoyMode(true)", restarted.context);
   }
+});
+
+test("site exceptions stay exact, persist across workers, and require an active site and popup", async () => {
+  const localData = { getblockedDecoyMode: true };
+  const rules = [];
+  const worker = startBackground(localData, rules);
+  const popup = { id: "test-extension", url: "chrome-extension://test-extension/popup/popup.html" };
+  const message = { type: "SET_GETBLOCKED_SITE_PROTECTION", tabId: 1, hostname: "shop.example.test", enabled: false };
+  const site = async background => (await vm.runInContext("getReport(1)", background.context)).site;
+  assert.equal((await site(worker)).enabled, true);
+  for (const [request, sender] of [
+    [message, { ...popup, url: "https://shop.example.test/" }],
+    [{ ...message, hostname: "example.test" }, popup],
+    [{ ...message, enabled: "false" }, popup],
+    [{ ...message, tabId: -1 }, popup]
+  ]) {
+    assert.equal((await worker.message(request, sender)).ok, false);
+  }
+  assert.equal(rules.length, 0);
+  assert.equal((await worker.message(message, popup)).ok, true);
+  assert.equal((await worker.message(message, popup)).ok, true);
+  assert.equal(rules.length, 1);
+  const [rule] = rules;
+  assert.equal(rule.action.type, "allowAllRequests");
+  assert.deepEqual([...rule.condition.resourceTypes], ["main_frame"]);
+  assert.ok(rule.priority >= Math.max(...readJson("rules/rules.json").map(item => item.priority)));
+  assert.ok(rule.priority < readJson("rules/unsafe.json")[0].priority);
+  const filter = new RegExp(rule.condition.regexFilter);
+  assert.ok(filter.test("http://shop.example.test:8080/cart"));
+  assert.ok(filter.test("https://visitor@shop.example.test/cart"));
+  for (const url of ["https://sub.shop.example.test/", "https://shop.example.test.evil.test/",
+    "https://shop.example.test@evil.test/", "https://elsewhere.test/shop.example.test/"]) {
+    assert.equal(filter.test(url), false);
+  }
+  const restarted = startBackground(localData, rules);
+  assert.equal((await site(restarted)).enabled, false);
+  for (const [hostname, expected] of [["shop.example.test", false], ["sub.shop.example.test", true]]) {
+    const { configuration: config } = await restarted.message({ type: "GETBLOCKED_DECOY_CONFIG" },
+      { id: "test-extension", tab: { id: 1 }, frameId: 0, url: `https://${hostname}/` });
+    assert.equal(config.enabled, expected);
+    if (!expected) assert.equal(config.profile, null);
+  }
+  // Site changes apply to fresh top-level navigations. Embeds created while a
+  // reload is pending still receive their existing document's configuration.
+  for (const sitePaused of [true, false]) {
+    localData.getblockedTabStats = { 1: { sitePaused } };
+    const { configuration } = await restarted.message({ type: "GETBLOCKED_DECOY_CONFIG" },
+      { id: "test-extension", tab: { id: 1, url: "https://shop.example.test/" }, frameId: 2 });
+    assert.equal(configuration.enabled, !sitePaused);
+  }
+  worker.rejectRules();
+  assert.equal((await worker.message({ ...message, enabled: true }, popup)).ok, false);
+  assert.equal((await site(worker)).enabled, false);
+  assert.equal((await restarted.message({ ...message, enabled: true }, popup)).ok, true);
+  assert.equal((await site(restarted)).enabled, true);
+  assert.equal(rules.length, 0);
+  assert.equal(await vm.runInContext("getSiteProtection('chrome://settings/')", restarted.context), null);
 });
 
 test("concurrent frames share one session profile and failed initialization can retry", async () => {

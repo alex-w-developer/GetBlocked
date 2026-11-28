@@ -15,7 +15,7 @@
         <div class="hero-copy">
           <p class="eyebrow">GetBlocked!</p>
           <h1>Privacy report</h1>
-          <p class="subtitle" id="mode-summary">Blocking known trackers and cleaning URLs.</p>
+          <p class="subtitle" id="mode-summary">Loading protection settings…</p>
         </div>
       </header>
 
@@ -27,14 +27,26 @@
           </div>
           <label class="switch">
             <span class="sr-only">Enable experimental Decoy Mode on all websites</span>
-            <input id="decoy-mode-toggle" type="checkbox" role="switch" aria-describedby="decoy-mode-scope decoy-mode-description">
+            <input id="decoy-mode-toggle" type="checkbox" role="switch" aria-describedby="decoy-mode-scope decoy-mode-description" disabled>
             <span class="switch-track" aria-hidden="true"></span>
           </label>
         </div>
-        <p id="decoy-mode-scope">Applies to all websites. Turning this on pauses tracker blocking everywhere. URL cleanup stays on.</p>
+        <p id="decoy-mode-scope">Applies to all websites. Turning this on pauses tracker blocking everywhere. URL cleanup stays on where site protection is enabled.</p>
         <p id="decoy-mode-description">
-          Off: known third-party tracker requests are blocked on all websites.
+          Loading Decoy Mode setting…
         </p>
+      </section>
+
+      <section class="mode-card" aria-labelledby="site-protection-title">
+        <div class="mode-heading">
+          <span class="mode-title" id="site-protection-title">Site protection</span>
+          <label class="switch">
+            <span class="sr-only">Apply tracker protection and URL cleanup to this hostname</span>
+            <input id="site-protection-toggle" type="checkbox" role="switch" aria-describedby="site-protection-description" disabled>
+            <span class="switch-track" aria-hidden="true"></span>
+          </label>
+        </div>
+        <p id="site-protection-description">Loading site setting…</p>
       </section>
 
       <section class="mode-card" aria-labelledby="unsafe-domains-title">
