@@ -1,4 +1,5 @@
 importScripts("shared/config.js");
+importScripts("site-protection.js");
 
 const {
   BLOCK_RULE_ID,
@@ -271,8 +272,8 @@ async function setDecoyMode(enabled) {
   };
 }
 
-async function getDecoyConfiguration() {
-  const enabled = await getDecoyMode();
+async function getDecoyConfiguration(topLevelUrl) {
+  const enabled = await getDecoyMode() && (await getSiteProtection(topLevelUrl))?.enabled !== false;
   return {
     enabled,
     profile: enabled ? await ensureDecoySessionProfile() : null
@@ -323,6 +324,10 @@ async function syncBadgeForTab(tabId, stats, decoyMode = null) {
   }
 
   const mode = decoyMode === null ? await getDecoyMode() : decoyMode;
+  if (stats?.sitePaused) {
+    await Promise.all([setBadgeText(tabId, ""), setActionTitle(tabId, "Site protection paused")]);
+    return;
+  }
   const count = getActiveBadgeCount(normalizeTabStats(stats), mode);
   const title = mode
     ? `Decoyed requests on this page: ${count}`
@@ -483,6 +488,7 @@ async function syncBlockedEstimateForTab(tabId, estimate) {
 }
 
 async function updatePageSignals(tabId, signals) {
+  if ((await getTabStats(tabId)).sitePaused) return;
   const detectedCategories = Array.isArray(signals.detectedCategories)
     ? signals.detectedCategories.filter((category) => {
         return typeof category === "string" && category.length > 0;
@@ -518,7 +524,7 @@ async function updatePageSignals(tabId, signals) {
 
 async function recordDecoyedRequest(tabId, hostname) {
   const normalizedHost = String(hostname || "").toLowerCase();
-  if (!(await getDecoyMode()) || !isKnownTrackerHost(normalizedHost)) {
+  if (!(await getDecoyMode()) || !isKnownTrackerHost(normalizedHost) || (await getTabStats(tabId)).sitePaused) {
     return;
   }
 
@@ -541,6 +547,7 @@ async function getReport(tabId) {
 
   return {
     page: pageStats,
+    site: await getSiteProtection((await chrome.tabs.get(tabId)).url),
     decoyMode,
     unsafeDomainBlocking: await getUnsafeDomainBlocking(),
     localOnly: true,
@@ -549,6 +556,19 @@ async function getReport(tabId) {
 }
 
 function handleMessage(message, sender, sendResponse) {
+  if (message?.type === "SET_GETBLOCKED_SITE_PROTECTION") {
+    if (sender.id !== chrome.runtime.id || sender.url !== chrome.runtime.getURL("popup/popup.html") ||
+        !Number.isInteger(message.tabId) || message.tabId < 0 ||
+        typeof message.hostname !== "string" || typeof message.enabled !== "boolean") {
+      sendResponse({ ok: false, error: "Invalid site setting request" });
+      return false;
+    }
+    queueUpdate(() => setSiteProtection(message.tabId, message.hostname, message.enabled))
+      .then(() => sendResponse({ ok: true }))
+      .catch(error => sendResponse({ ok: false, error: error.message || "Unable to update site protection" }));
+    return true;
+  }
+
   if (message?.type === "SET_GETBLOCKED_UNSAFE_DOMAINS") {
     if (sender.id !== chrome.runtime.id ||
         sender.url !== chrome.runtime.getURL("popup/popup.html") ||
@@ -584,7 +604,7 @@ function handleMessage(message, sender, sendResponse) {
   }
 
   if (message?.type === "GETBLOCKED_DECOY_CONFIG") {
-    getDecoyConfiguration()
+    getDecoyConfiguration(sender.frameId === 0 ? sender.url : sender.tab?.url)
       .then((configuration) => sendResponse({ ok: true, configuration }))
       .catch((error) => {
         sendResponse({
@@ -664,6 +684,7 @@ chrome.webNavigation.onCommitted.addListener((details) => {
     );
 
     await resetTabStats(details.tabId, {
+      sitePaused: (await getSiteProtection(details.url))?.enabled === false,
       trackingLinksCleaned: trackingParamsRemoved > 0 ? 1 : 0,
       trackingParamsRemoved
     });

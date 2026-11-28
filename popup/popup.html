@@ -31,10 +31,22 @@
             <span class="switch-track" aria-hidden="true"></span>
           </label>
         </div>
-        <p id="decoy-mode-scope">Applies to all websites. Turning this on pauses tracker blocking everywhere. URL cleanup stays on.</p>
+        <p id="decoy-mode-scope">Applies to all websites. Turning this on pauses tracker blocking everywhere. URL cleanup stays on where site protection is enabled.</p>
         <p id="decoy-mode-description">
           Loading Decoy Mode setting…
         </p>
+      </section>
+
+      <section class="mode-card" aria-labelledby="site-protection-title">
+        <div class="mode-heading">
+          <span class="mode-title" id="site-protection-title">Site protection</span>
+          <label class="switch">
+            <span class="sr-only">Apply tracker protection and URL cleanup to this hostname</span>
+            <input id="site-protection-toggle" type="checkbox" role="switch" aria-describedby="site-protection-description" disabled>
+            <span class="switch-track" aria-hidden="true"></span>
+          </label>
+        </div>
+        <p id="site-protection-description">Loading site setting…</p>
       </section>
 
       <section class="mode-card" aria-labelledby="unsafe-domains-title">

@@ -4,7 +4,7 @@ The **Community domain list** switch in the popup enables an additional, local b
 
 These are community reports, not independently verified phishing or malware determinations. The list may contain false positives or outdated reports, and it is not comprehensive protection against dangerous websites. If it blocks a legitimate site, turn this switch off. It is a bundled snapshot; the extension does not download updates or send domains or browsing data to a service.
 
-The list is independent of the tracker catalog. Decoy Mode changes only tracker blocking and does not disable the community list or make its domains eligible for identifier replacement. The popup's tracker estimates and Decoy counters do not count community-list blocks.
+The list is independent of the tracker catalog. Its blocks remain active when Decoy Mode is on and when a site's **Site protection** switch is off. Listed domains do not become eligible for identifier replacement. The popup's tracker estimates and Decoy counters do not count community-list blocks.
 
 ## Where The List Came From
 
