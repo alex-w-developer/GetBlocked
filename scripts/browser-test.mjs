@@ -515,6 +515,7 @@ async function main() {
       "--disable-popup-blocking",
       "--allow-running-insecure-content",
       "--headless=new",
+      // All fixture names resolve locally even when blocking is turned off.
       "--host-resolver-rules=MAP * 127.0.0.1",
       "--no-proxy-server",
       ...(process.env.CHROME_NO_SANDBOX === "1" ? ["--no-sandbox"] : []),
@@ -588,8 +589,7 @@ async function main() {
     );
 
     const pageTarget =
-      allTargets.find((t) => t.targetId === tabTargetId) ||
-      allTargets.find((t) => t.type === "page" && t.url === "about:blank");
+      allTargets.find((t) => t.id === tabTargetId);
 
     if (!pageTarget || !pageTarget.webSocketDebuggerUrl) {
       throw new Error(
@@ -652,6 +652,7 @@ async function main() {
       }
     });
     if (!swTarget) {
+      console.error("Browser stderr:", chromeStderr);
       throw new Error("Unpacked extension was not loaded by this browser");
     }
 
@@ -705,8 +706,8 @@ async function main() {
       await sleep(500);
       const popupTargets = await cdpHttpGet(DEBUG_PORT, "/json/list");
       const popupTarget = popupTargets.find(
-        (target) => target.targetId === popupTargetResult.targetId
-      ) || popupTargets.find((target) => target.url === popupUrl);
+        (target) => target.id === popupTargetResult.targetId
+      );
       if (!popupTarget?.webSocketDebuggerUrl) {
         throw new Error(
           `Could not open the extension popup page: ${popupTargets
@@ -889,6 +890,43 @@ async function main() {
         check("Background report: valid response", false, JSON.stringify(report));
       }
 
+      // Verify the estimate through the same report endpoint as the popup. A fresh
+      // document would also scan successfully, so require a persisted pageshow.
+      const historyUrl = `http://127.0.0.1:${TEST_PORT}/test/history.html`;
+      const historyReport = () => evaluatePopup(`chrome.runtime.sendMessage({
+        type: 'GETBLOCKED_REPORT', tabId: ${JSON.stringify(tabId)}
+      }).then(response => response.report?.page.blockedOnPage)`);
+      const historyBadge = () => evaluateExtension(`chrome.action.getBadgeText({tabId: ${JSON.stringify(tabId)}})`);
+      async function waitForHistoryCount(count) {
+        for (let attempt = 0; attempt < 50; attempt++) {
+          if (await historyReport() === count && await historyBadge() === String(count || "")) return true;
+          await sleep(100);
+        }
+        return false;
+      }
+      await pageCdp.send("Page.navigate", { url: historyUrl });
+      check("History: fresh document reports its tracker estimate", await waitForHistoryCount(1));
+      const history = await pageCdp.send("Page.getNavigationHistory");
+      await pageCdp.send("Page.navigate", { url: "about:blank" });
+      check("History: navigating away clears the estimate and badge", await waitForHistoryCount(0));
+      await pageCdp.send("Page.navigateToHistoryEntry", { entryId: history.entries[history.currentIndex].id });
+      const recovered = await waitForHistoryCount(1);
+      const persisted = await pageCdp.send("Runtime.evaluate", {
+        expression: "document.documentElement.dataset.restored", returnByValue: true
+      });
+      check("History: Chrome restored the cached document", persisted.result.value === "true");
+      check("History: the restored page repopulates the popup report and badge", recovered);
+      await pageCdp.send("Page.navigate", { url: testUrl });
+      await sleep(WAIT_MS);
+
+      const fixturePolicy = await pageCdp.send("Runtime.evaluate", {
+        expression: 'document.querySelector(\'meta[http-equiv="Content-Security-Policy"]\').content',
+        returnByValue: true
+      });
+      check("Manual fixture restricts scripts to its own origin and denies external connections",
+        fixturePolicy.result.value.split(";").map(part => part.trim()).includes("default-src 'none'") &&
+        fixturePolicy.result.value.includes("script-src 'self'") &&
+        !fixturePolicy.result.value.includes("connect-src"));
       const enabledPopup = await evaluatePopup(`
         (async () => {
           const toggle = document.querySelector("#decoy-mode-toggle");
@@ -961,7 +999,20 @@ async function main() {
         const tabs = await chrome.tabs.query({});
         return tabs.find(tab => String(tab.url || '').startsWith('http://localhost:${TEST_PORT}/'))?.id;
       })()`);
-      const secondReport = await evaluateExtension(`getReport(${JSON.stringify(secondTabId)})`);
+      async function exerciseDecoy(pageSession, id) {
+        const click = await pageSession.send("Runtime.evaluate", {
+          expression: 'document.querySelector("#exercise-decoy").click()'
+        });
+        if (click.exceptionDetails) throw new Error("Unable to run Decoy fixture");
+        let report;
+        for (let attempt = 0; attempt < 50; attempt++) {
+          report = await evaluateExtension(`getReport(${JSON.stringify(id)})`);
+          if (report?.page.decoyedRequests > 0) break;
+          await sleep(100);
+        }
+        return report;
+      }
+      const secondReport = await exerciseDecoy(secondPageCdp, secondTabId);
       check("Decoy Mode: global preference applies to a different site",
         secondReport?.decoyMode === true && secondReport.page?.decoyedRequests > 0,
         JSON.stringify(secondReport));
@@ -995,14 +1046,12 @@ async function main() {
         JSON.stringify(decoySearch.getAll("ref")) === JSON.stringify(["invite42", "chapter2"]) &&
         decoySearch.get("route") === "reader");
 
-      const decoyReport = await evaluateExtension(`
-        getReport(${JSON.stringify(tabId)}).then((report) => ({ ok: true, report }))
-      `);
+      const decoyReport = await exerciseDecoy(pageCdp, tabId);
       check(
         "Decoy Mode: modified requests counted without false blocks",
-        decoyReport?.report?.decoyMode === true &&
-          decoyReport?.report?.page?.decoyedRequests > 0 &&
-          decoyReport?.report?.page?.blockedOnPage === 0,
+        decoyReport?.decoyMode === true &&
+          decoyReport?.page?.decoyedRequests > 0 &&
+          decoyReport?.page?.blockedOnPage === 0,
         JSON.stringify(decoyReport)
       );
       const decoyBadgeText = await evaluateExtension(`
@@ -1014,13 +1063,13 @@ async function main() {
       check(
         "Decoy Mode: badge matches decoyed request count",
         decoyBadgeText ===
-          String(decoyReport?.report?.page?.decoyedRequests || ""),
+          String(decoyReport?.page?.decoyedRequests || ""),
         `badge=${JSON.stringify(decoyBadgeText)}, report=${JSON.stringify(decoyReport)}`
       );
       check(
         "Decoy Mode: badge title identifies the decoyed request count",
         decoyActionTitle ===
-          `Reported Decoy replacements on this page: ${decoyReport?.report?.page?.decoyedRequests || 0}`,
+          `Reported Decoy replacements on this page: ${decoyReport?.page?.decoyedRequests || 0}`,
         `title=${JSON.stringify(decoyActionTitle)}, report=${JSON.stringify(decoyReport)}`
       );
 

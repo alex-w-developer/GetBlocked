@@ -173,7 +173,7 @@ The **Site protection** switch uses one dynamic `allowAllRequests` rule per paus
 - Images, iframes, scripts, and related elements pointing at known tracker domains.
 - Visible tracking-looking elements.
 
-The scan runs once at `document_idle`, stays local in the browser, and sends category/count signals to the background service worker. It intentionally avoids a long-lived DOM observer so reloading an unpacked extension does not leave stale callbacks in already-open tabs.
+The scan runs at `document_idle` on new pages and again on a persisted `pageshow` when Chrome restores a document from its back/forward cache. It sends category and count signals to the background service worker. It intentionally avoids a long-lived DOM observer so reloading an unpacked extension does not leave stale callbacks in already-open tabs.
 
 ## How Decoy Mode Works
 

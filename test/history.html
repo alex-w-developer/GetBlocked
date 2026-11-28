@@ -1,0 +1,10 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>History navigation fixture</title>
+<!-- An inert URL supplies a DOM signal without making a network request. -->
+<link href="https://api.segment.io/history-fixture">
+<script>
+  window.addEventListener("pageshow", event => {
+    document.documentElement.dataset.restored = String(event.persisted);
+  });
+</script>

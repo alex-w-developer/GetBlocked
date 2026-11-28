@@ -233,18 +233,18 @@ Override defaults with environment variables:
 After loading the unpacked extension, start a simple local server from this folder:
 
 ```bash
-python -m http.server 8080
+python -m http.server 8080 --bind 127.0.0.1
 ```
 
 Then open:
 
 ```text
-http://localhost:8080/test/manual-test.html?utm_source=demo&utm_medium=test&fbclid=manual
+http://127.0.0.1:8080/test/manual-test.html?utm_source=demo&utm_medium=test&fbclid=manual
 ```
 
-With GetBlocked! enabled and Decoy Mode off, the tracking parameters should be removed from the page URL and known third-party tracker requests should be blocked. The popup should show page-level tracker activity.
+In normal mode, confirm that tracking parameters disappear from the address bar and the popup shows an estimate of the tracker URLs in the page. The fixture's content security policy blocks external connections, including when the extension is disabled.
 
-Then turn on **Decoy Mode (Experimental)** in the popup and reload the fixture. URL cleanup should continue, supported identifiers in the fixture's `fetch`, XHR, and beacon calls should be replaced, and **Reported Decoy replacements** should increase. The tracker requests themselves may still fail because the example endpoints reject test/CORS traffic; the counter records the local replacement attempt. Turn Decoy Mode off again to restore normal blocking.
+Enable **Decoy Mode (Experimental)**, click **Try the three Decoy request formats** on the fixture, then reopen the popup to see the reported replacements. Turn Decoy Mode off when finished. The required browser suite separately checks Chrome's DNR behavior against local test traffic.
 
 ## Contributor Links
 
