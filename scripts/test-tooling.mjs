@@ -424,6 +424,49 @@ test("global Decoy preference reapplies catalog rules on startup and extension u
   }
 });
 
+test("concurrent frames share one session profile and failed initialization can retry", async () => {
+  const { context, disabledRules } = startBackground();
+  const area = context.chrome.storage.session;
+  const save = area.set;
+  area.set = (_, callback) => {
+    context.chrome.runtime.lastError = { message: "Profile storage unavailable" };
+    callback();
+    delete context.chrome.runtime.lastError;
+  };
+  await assert.rejects(vm.runInContext("setDecoyMode(true)", context),
+    error => error.message === "Profile storage unavailable");
+  assert.equal(disabledRules.size, 0);
+  let writes = 0;
+  area.set = (...args) => { writes++; save(...args); };
+  const profiles = await vm.runInContext("Promise.all(Array.from({ length: 8 }, ensureDecoySessionProfile))", context);
+  assert.equal(new Set(profiles.map(profile => profile.userId)).size, 1);
+  assert.equal(writes, 1);
+});
+
+test("Decoy save failures restore enforcement and mode changes preserve page estimates", async () => {
+  const data = { getblockedTabStats: { 4: { estimatedTrackerRequests: 3 } } };
+  const { context, disabledRules } = startBackground(data);
+  const area = context.chrome.storage.local;
+  const save = area.set;
+  for (const previous of [false, true]) {
+    await vm.runInContext("setDecoyMode(" + previous + ")", context);
+    area.set = (_, callback) => {
+      context.chrome.runtime.lastError = { message: "Setting storage unavailable" };
+      callback();
+      delete context.chrome.runtime.lastError;
+    };
+    await assert.rejects(vm.runInContext("setDecoyMode(" + !previous + ")", context),
+      error => error.message === "Setting storage unavailable");
+    assert.equal(disabledRules.has(1), previous);
+    assert.equal(data.getblockedDecoyMode, previous);
+    const report = await vm.runInContext("getReport(4)", context);
+    assert.equal(report.page.blockedOnPage, previous ? 0 : 3);
+    area.set = save;
+  }
+  await vm.runInContext("setDecoyMode(false)", context);
+  assert.equal((await vm.runInContext("getReport(4)", context)).page.blockedOnPage, 3);
+});
+
 test("community list rejects malformed, duplicate and broad shared-service domains", () => {
   assert.deepEqual(validateUnsafeDomains({ domains: ["b.example.test", "a.example.test"] }),
     ["a.example.test", "b.example.test"]);

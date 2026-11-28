@@ -136,7 +136,6 @@ function configureActionBadge() {
 
 function createEmptyTabStats() {
   return {
-    blockedOnPage: 0,
     decoyedRequests: 0,
     trackingLinksCleaned: 0,
     trackingParamsRemoved: 0,
@@ -227,7 +226,17 @@ async function setUnsafeDomainBlocking(enabled) {
   return { enabled };
 }
 
-async function ensureDecoySessionProfile() {
+let pendingSessionProfile;
+function ensureDecoySessionProfile() {
+  if (!pendingSessionProfile) {
+    pendingSessionProfile = loadOrCreateSessionProfile().finally(() => {
+      pendingSessionProfile = undefined;
+    });
+  }
+  return pendingSessionProfile;
+}
+
+async function loadOrCreateSessionProfile() {
   const result = await sessionStorageGet(DECOY_SESSION_PROFILE_KEY);
   const existing = result[DECOY_SESSION_PROFILE_KEY];
 
@@ -255,20 +264,23 @@ async function syncDecoyRuleStateFromStorage() {
 }
 
 async function setDecoyMode(enabled) {
+  const previous = await getDecoyMode();
+  const profile = enabled ? await ensureDecoySessionProfile() : null;
   await applyDecoyRuleState(enabled);
-  await storageSet({ [DECOY_MODE_KEY]: enabled });
-
-  if (enabled) {
-    await clearBlockedCounts();
-  } else {
-    const tabStats = await getAllTabStats();
-    await syncAllTabBadges(tabStats, false);
+  try {
+    await storageSet({ [DECOY_MODE_KEY]: enabled });
+  } catch (error) {
+    await applyDecoyRuleState(previous);
+    throw error;
   }
 
-  return {
-    enabled,
-    profile: enabled ? await ensureDecoySessionProfile() : null
-  };
+  // The setting is committed. A later report also refreshes the tab badge.
+  try {
+    await syncAllTabBadges(await getAllTabStats(), enabled);
+  } catch (error) {
+    console.warn("Unable to refresh GetBlocked badges:", error);
+  }
+  return { enabled, profile };
 }
 
 async function getDecoyConfiguration() {
@@ -282,7 +294,8 @@ async function getDecoyConfiguration() {
 function normalizeTabStats(stats) {
   return {
     ...createEmptyTabStats(),
-    ...(stats || {})
+    ...(stats || {}),
+    estimatedTrackerRequests: stats?.estimatedTrackerRequests ?? stats?.blockedOnPage ?? 0
   };
 }
 
@@ -313,7 +326,7 @@ async function setAllTabStats(tabStats) {
 }
 
 function getActiveBadgeCount(stats, decoyMode) {
-  const count = decoyMode ? stats.decoyedRequests : stats.blockedOnPage;
+  const count = decoyMode ? stats.decoyedRequests : stats.estimatedTrackerRequests;
   return Math.max(0, Number(count) || 0);
 }
 
@@ -340,25 +353,6 @@ async function syncAllTabBadges(tabStats, decoyMode = null) {
       return syncBadgeForTab(Number(tabId), stats, decoyMode);
     })
   );
-}
-
-async function clearBlockedCounts() {
-  const tabStats = await getAllTabStats();
-  const updatedAt = Date.now();
-  const nextStats = Object.fromEntries(
-    Object.entries(tabStats).map(([tabId, stats]) => {
-      return [
-        tabId,
-        normalizeTabStats({
-          ...stats,
-          blockedOnPage: 0,
-          updatedAt
-        })
-      ];
-    })
-  );
-  await setAllTabStats(nextStats);
-  await syncAllTabBadges(nextStats, true);
 }
 
 async function getTabStats(tabId) {
@@ -469,19 +463,6 @@ async function clearTransientLocalData() {
   await storageRemove([TAB_STATS_KEY, PENDING_NAVIGATION_KEY, OBSOLETE_TOTALS_KEY]);
 }
 
-async function syncBlockedEstimateForTab(tabId, estimate) {
-  const safeEstimate = Math.max(0, Number(estimate) || 0);
-  const current = await getTabStats(tabId);
-
-  if (safeEstimate <= current.blockedOnPage) {
-    return current;
-  }
-
-  return updateTabStats(tabId, () => ({
-    blockedOnPage: safeEstimate
-  }));
-}
-
 async function updatePageSignals(tabId, signals) {
   const detectedCategories = Array.isArray(signals.detectedCategories)
     ? signals.detectedCategories.filter((category) => {
@@ -511,9 +492,6 @@ async function updatePageSignals(tabId, signals) {
       new Set([...current.detectedCategories, ...safeSignals.detectedCategories])
     )
   }));
-  if (!(await getDecoyMode())) {
-    await syncBlockedEstimateForTab(tabId, safeSignals.estimatedTrackerRequests);
-  }
 }
 
 async function recordDecoyedRequest(tabId, hostname) {
@@ -540,7 +518,7 @@ async function getReport(tabId) {
   await syncBadgeForTab(tabId, pageStats, decoyMode);
 
   return {
-    page: pageStats,
+    page: { ...pageStats, blockedOnPage: decoyMode ? 0 : getActiveBadgeCount(pageStats, false) },
     decoyMode,
     unsafeDomainBlocking: await getUnsafeDomainBlocking(),
     localOnly: true,
