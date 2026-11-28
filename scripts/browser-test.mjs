@@ -629,6 +629,7 @@ async function main() {
       }
     });
     if (!swTarget) {
+      console.error("Browser stderr:", chromeStderr);
       throw new Error("Unpacked extension was not loaded by this browser");
     }
 
@@ -865,6 +866,35 @@ async function main() {
       } else {
         check("Background report: valid response", false, JSON.stringify(report));
       }
+
+      // Verify the estimate through the same report endpoint as the popup. A fresh
+      // document would also scan successfully, so require a persisted pageshow.
+      const historyUrl = `http://127.0.0.1:${TEST_PORT}/test/history.html`;
+      const historyReport = () => evaluatePopup(`chrome.runtime.sendMessage({
+        type: 'GETBLOCKED_REPORT', tabId: ${JSON.stringify(tabId)}
+      }).then(response => response.report?.page.blockedOnPage)`);
+      const historyBadge = () => evaluateExtension(`chrome.action.getBadgeText({tabId: ${JSON.stringify(tabId)}})`);
+      async function waitForHistoryCount(count) {
+        for (let attempt = 0; attempt < 50; attempt++) {
+          if (await historyReport() === count && await historyBadge() === String(count || "")) return true;
+          await sleep(100);
+        }
+        return false;
+      }
+      await pageCdp.send("Page.navigate", { url: historyUrl });
+      check("History: fresh document reports its tracker estimate", await waitForHistoryCount(1));
+      const history = await pageCdp.send("Page.getNavigationHistory");
+      await pageCdp.send("Page.navigate", { url: "about:blank" });
+      check("History: navigating away clears the estimate and badge", await waitForHistoryCount(0));
+      await pageCdp.send("Page.navigateToHistoryEntry", { entryId: history.entries[history.currentIndex].id });
+      const recovered = await waitForHistoryCount(1);
+      const persisted = await pageCdp.send("Runtime.evaluate", {
+        expression: "document.documentElement.dataset.restored", returnByValue: true
+      });
+      check("History: Chrome restored the cached document", persisted.result.value === "true");
+      check("History: the restored page repopulates the popup report and badge", recovered);
+      await pageCdp.send("Page.navigate", { url: testUrl });
+      await sleep(WAIT_MS);
 
       const fixturePolicy = await pageCdp.send("Runtime.evaluate", {
         expression: 'document.querySelector(\'meta[http-equiv="Content-Security-Policy"]\').content',

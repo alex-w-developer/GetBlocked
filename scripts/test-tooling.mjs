@@ -234,6 +234,7 @@ test("content scan resolves relative resources against the document base URI", (
       },
       window: {
         location: new URL(pageUrl),
+        addEventListener() {},
         getComputedStyle: () => ({ display: "block", visibility: "visible", opacity: "1" })
       },
       document: { baseURI, querySelectorAll: () => elements },
