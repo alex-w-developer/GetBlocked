@@ -118,8 +118,11 @@ const frame = {
 };
 const transportContext = vm.createContext({
   window: frame, document: { baseURI: frame.origin }, URL, URLSearchParams,
-  Request, Headers, XMLHttpRequest: LocalXhr, Navigator: LocalNavigator,
-  fetch: async url => { calls.push(url); }
+  Request, Headers, Blob, TextDecoder, setTimeout, clearTimeout, XMLHttpRequest: LocalXhr, Navigator: LocalNavigator,
+  fetch: async (input, init) => {
+    calls.push(input);
+    if (input instanceof Request) return new Request(input, init);
+  }
 });
 for (const file of ["shared/config.js", "shared/tracker-scope.js", "shared/decoy-transform.js", "decoy-interceptor.js"]) {
   vm.runInContext(fs.readFileSync(path.join(rootDir, file), "utf8"), transportContext);
@@ -148,4 +151,70 @@ for (const [origin, base, input, expected] of [
   assert.deepEqual(calls, [expected, expected, expected], [origin, base, input].join(" "));
 }
 
+const originalUrl = "https://api.segment.io/collect?user_id=original";
+const posted = new Request(originalUrl, {
+  method: "POST", keepalive: true, credentials: "include", redirect: "error",
+  headers: { "content-type": "application/json", "x-local-test": "kept" },
+  body: JSON.stringify({ user_id: "original", event: "page_view" })
+});
+const rewritten = await transportContext.fetch(posted);
+assert.equal(new URL(rewritten.url).searchParams.get("user_id"), profile.userId);
+assert.equal(rewritten.keepalive, true);
+assert.equal(rewritten.method, "POST");
+assert.equal(rewritten.credentials, "include");
+assert.equal(rewritten.redirect, "error");
+assert.equal(rewritten.headers.get("x-local-test"), "kept");
+assert.deepEqual(await rewritten.json(), { user_id: profile.userId, event: "page_view" });
+assert.equal(posted.bodyUsed, true);
+
+const inheritedOptions = Object.create({ method: "PUT", keepalive: true, body: "user_id=overridden" });
+const overridden = await transportContext.fetch(new Request(originalUrl), inheritedOptions);
+assert.equal(overridden.method, "PUT");
+assert.equal(overridden.keepalive, true);
+assert.equal(await overridden.text(), "user_id=" + profile.userId);
+
+const oversized = "user_id=original&padding=" + "a".repeat(64 * 1024);
+const large = await transportContext.fetch(new Request(originalUrl, { method: "POST", body: oversized }));
+assert.equal(large.url, originalUrl);
+assert.equal(await large.text(), oversized);
+
+const malformedBytes = Uint8Array.from([...new TextEncoder().encode("user_id=original&data="), 255]);
+const binary = await transportContext.fetch(new Request(originalUrl, {
+  method: "POST", headers: { "content-type": "text/plain" }, body: malformedBytes
+}));
+assert.equal(binary.url, originalUrl);
+assert.deepEqual(new Uint8Array(await binary.arrayBuffer()), malformedBytes);
+
+const otherEncoding = await transportContext.fetch(new Request(originalUrl, {
+  method: "POST", headers: { "content-type": 'text/plain; charset="windows-1252"' }, body: "user_id=original"
+}));
+assert.equal(otherEncoding.url, originalUrl);
+assert.equal(await otherEncoding.text(), "user_id=original");
+
+let finishUpload;
+const stream = new ReadableStream({
+  start(controller) {
+    finishUpload = () => {
+      controller.enqueue(new TextEncoder().encode("user_id=original"));
+      controller.close();
+    };
+  }
+});
+const slow = new Request(originalUrl, {
+  method: "POST", duplex: "half", body: stream, headers: { "content-type": "text/plain" }
+});
+let watchdog;
+try {
+  const forwarded = await Promise.race([
+    transportContext.fetch(slow),
+    new Promise((_, reject) => { watchdog = setTimeout(() => reject(new Error("Fetch waited for the upload")), 2000); })
+  ]);
+  assert.equal(forwarded.url, originalUrl);
+  finishUpload();
+  finishUpload = null;
+  assert.equal(await forwarded.text(), "user_id=original");
+} finally {
+  clearTimeout(watchdog);
+  finishUpload?.();
+}
 console.log("Decoy transformation checks OK");

@@ -14,6 +14,9 @@
   const nativeXhrSend = XMLHttpRequest.prototype.send;
   const nativeXhrSetRequestHeader = XMLHttpRequest.prototype.setRequestHeader;
   const nativeSendBeacon = Navigator.prototype.sendBeacon;
+  const MAX_BODY_BYTES = 64 * 1024;
+  const MAX_BODY_CHUNKS = 64;
+  const MAX_BODY_WAIT_MS = 50;
 
   function isReady() {
     return state.enabled && state.profile && typeof state.profile === "object";
@@ -71,72 +74,105 @@
 
   window.addEventListener("message", connectBridge);
 
+  // Request exposes even a string body as a stream. A slow or large upload
+  // must reach fetch without waiting for a complete buffered copy.
+  async function readSmallBody(request) {
+    const reader = request.clone().body.getReader();
+    const chunks = [];
+    let size = 0;
+    let complete = false;
+    let expired = false;
+    const timeout = setTimeout(() => {
+      expired = true;
+      void reader.cancel().catch(() => {});
+    }, MAX_BODY_WAIT_MS);
+    try {
+      while (true) {
+        const { done, value } = await reader.read();
+        if (expired) return null;
+        if (done) {
+          complete = true;
+          return new Blob(chunks);
+        }
+        size += value.byteLength;
+        if (size > MAX_BODY_BYTES || chunks.length >= MAX_BODY_CHUNKS) return null;
+        chunks.push(value);
+      }
+    } finally {
+      clearTimeout(timeout);
+      if (!complete && !expired) void reader.cancel().catch(() => {});
+      reader.releaseLock();
+    }
+  }
+
+  // Web IDL reads RequestInit dictionary members by name. Delegate each
+  // option to the original object, including inherited options and getters.
+  function withBody(options, body) {
+    return new Proxy({}, {
+      get: (_, name) => name === "body" ? body : options?.[name]
+    });
+  }
+
+  function supportsEmbeddedText(contentType) {
+    const charset = /;\s*charset\s*=\s*"?([^";\s]+)/.exec(contentType)?.[1];
+    return (!charset || charset === "utf-8" || charset === "utf8") &&
+      (contentType.includes("json") || contentType.startsWith("text/") ||
+       contentType.includes("application/x-www-form-urlencoded"));
+  }
+
+  async function prepareFetch(input, init, trackerUrl) {
+    const urlResult = transform.replaceUrl(trackerUrl, state.profile);
+    const fallback = { input, init, changed: false };
+    let nextInit = init;
+    let bodyForNewUrl = null;
+    let bodyChanged = false;
+    try {
+      if (input instanceof Request && input.body && init?.body == null) {
+        // Transfer the body and apply caller options just as fetch would.
+        // This effective Request stays usable if the clone cannot be read.
+        fallback.input = new Request(input, init);
+        fallback.init = undefined;
+        nextInit = undefined;
+        const contentType = getContentType(fallback.input.headers).toLowerCase();
+        if (!supportsEmbeddedText(contentType)) return fallback;
+        const bytes = await readSmallBody(fallback.input);
+        if (!bytes) return fallback;
+        const text = new TextDecoder("utf-8", { fatal: true }).decode(await bytes.arrayBuffer());
+        const bodyResult = transform.replaceText(text, state.profile, contentType);
+        bodyChanged = bodyResult.changed;
+        bodyForNewUrl = bodyChanged ? bodyResult.value : bytes;
+        if (bodyChanged && !urlResult.changed) nextInit = { body: bodyResult.value };
+      } else if (init?.body != null) {
+        const bodyResult = transform.replaceBody(
+          init.body, state.profile, getContentType(init.headers || input?.headers)
+        );
+        if (bodyResult.changed) {
+          bodyChanged = true;
+          nextInit = withBody(init, bodyResult.value);
+        }
+      }
+
+      let nextInput = fallback.input;
+      if (urlResult.changed) {
+        nextInput = nextInput instanceof Request
+          ? new Request(urlResult.value, withBody(nextInput, bodyForNewUrl))
+          : urlResult.value;
+      }
+      return { input: nextInput, init: nextInit, changed: urlResult.changed || bodyChanged };
+    } catch {
+      return fallback;
+    }
+  }
+
   if (typeof nativeFetch === "function") {
     globalThis.fetch = async function getBlockedDecoyFetch(input, init) {
       const rawUrl = input instanceof Request ? input.url : String(input);
       const trackerUrl = isReady() ? thirdPartyTrackerUrl(rawUrl) : null;
+      if (!trackerUrl) return Reflect.apply(nativeFetch, this, arguments);
 
-      if (!trackerUrl) {
-        return Reflect.apply(nativeFetch, this, arguments);
-      }
-
-      let changed = false;
-      let nextInput = input;
-      let nextInit = init;
-      const urlResult = transform.replaceUrl(trackerUrl, state.profile);
-
-      if (urlResult.changed) {
-        changed = true;
-        nextInput =
-          input instanceof Request
-            ? new Request(urlResult.value, input)
-            : urlResult.value;
-      }
-
-      try {
-        const suppliedBody = init?.body;
-        const contentType = getContentType(init?.headers || input?.headers);
-
-        if (suppliedBody !== undefined && suppliedBody !== null) {
-          const bodyResult = transform.replaceBody(
-            suppliedBody,
-            state.profile,
-            contentType
-          );
-
-          if (bodyResult.changed) {
-            changed = true;
-            nextInit = { ...(init || {}), body: bodyResult.value };
-          }
-        } else if (
-          input instanceof Request &&
-          !input.bodyUsed &&
-          !["GET", "HEAD"].includes(input.method.toUpperCase()) &&
-          (contentType.includes("json") ||
-            contentType.includes("application/x-www-form-urlencoded") ||
-            contentType.startsWith("text/"))
-        ) {
-          const bodyText = await input.clone().text();
-          const bodyResult = transform.replaceText(
-            bodyText,
-            state.profile,
-            contentType
-          );
-
-          if (bodyResult.changed) {
-            changed = true;
-            nextInit = { ...(init || {}), body: bodyResult.value };
-          }
-        }
-      } catch (error) {
-        // Unsupported, locked, or streaming bodies pass through unchanged.
-      }
-
-      if (changed) {
-        reportDecoyed(trackerUrl.hostname, "fetch");
-      }
-
-      return Reflect.apply(nativeFetch, this, [nextInput, nextInit]);
+      const prepared = await prepareFetch(input, init, trackerUrl);
+      if (prepared.changed) reportDecoyed(trackerUrl.hostname, "fetch");
+      return Reflect.apply(nativeFetch, this, [prepared.input, prepared.init]);
     };
   }
 

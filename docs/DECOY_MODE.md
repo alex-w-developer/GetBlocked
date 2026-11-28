@@ -46,9 +46,11 @@ Decoy Mode can replace supported fields in:
 - JSON string bodies.
 - URL-encoded string bodies and `URLSearchParams`.
 - `FormData` string fields.
-- Textual `Request` bodies that can be cloned safely by the `fetch` wrapper.
+- Embedded UTF-8 textual `Request` bodies that fit in 64 KiB and 64 chunks and finish reading within the wrapper's 50 ms budget.
 
-Binary, locked, already-consumed, unsupported, and streaming bodies pass through unchanged. Image pixels, script tags, iframes, CSS resources, HTML form navigation, WebSockets, WebTransport, and browser- or library-internal traffic that bypasses the wrapped APIs are not rewritten. A very early request may also run before the asynchronous session configuration reaches the main-world wrapper.
+An already constructed `Request` exposes its body as a stream even when the caller supplied a string. For supported text formats the wrapper reads a bounded copy. If the body is unsupported or exceeds the budget, the upload and its query string pass to native `fetch` together. Directly supplied binary or streaming bodies keep their original data. The browser handles locked or previously consumed inputs according to its normal fetch rules.
+
+Image pixels, script tags, iframes, CSS resources, HTML form navigation, WebSockets, WebTransport, and browser- or library-internal traffic that bypasses the wrapped APIs are not rewritten. A very early request may also run before the asynchronous session configuration reaches the main-world wrapper.
 
 ### Static Request Transformation Examples
 

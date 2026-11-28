@@ -167,7 +167,7 @@ function startFileServer(root, port) {
     }
     if (urlPath === "/test/site-probe") {
       res.writeHead(200, { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*", "Cache-Control": "no-store" });
-      res.end(JSON.stringify({ cid: requestUrl.searchParams.get("cid") }));
+      res.end(JSON.stringify({ cid: requestUrl.searchParams.get("cid"), method: req.method }));
       return;
     }
     const filePath = path.join(root, urlPath);
@@ -1209,6 +1209,15 @@ async function main() {
       await navigateSite(secondPageCdp, "localhost");
       await navigateSite(pageCdp, "child.localhost");
       const protectedId = await probe(pageCdp);
+      const keepalive = await readPage(pageCdp, `(async () => {
+        const request = new Request(${JSON.stringify(probeUrl)}, {
+          method: "POST", keepalive: true, body: new URLSearchParams({ cid: "body-fixture" })
+        });
+        return (await fetch(request)).json();
+      })()`);
+      check("Decoy Mode: loopback server receives a keepalive POST with the session identifier",
+        keepalive?.method === "POST" && keepalive.cid === firstConfiguration.configuration.profile.clientId,
+        JSON.stringify(keepalive));
       check("Site protection: Decoy changes identifiers on protected pages and leaves paused pages alone",
         await probe(secondPageCdp) === "site-fixture" && Boolean(protectedId) && protectedId !== "site-fixture",
         JSON.stringify({ protectedId }));
