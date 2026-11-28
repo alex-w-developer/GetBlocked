@@ -1,0 +1,4 @@
+# Match the byte format written by scripts/generate-rules.mjs on every OS.
+/rules/rules.json text eol=lf
+/rules/unsafe.json text eol=lf
+/shared/config.js text eol=lf
