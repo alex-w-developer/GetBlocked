@@ -218,6 +218,44 @@ test("JSON checker identifies malformed and missing files and preserves valid ou
   assert.match(missing.output, /manifest\.json: .*ENOENT/);
 });
 
+test("JSON checker enforces matching manifest and package versions", (t) => {
+  const dir = tempDir(t);
+  const files = [
+    "manifest.json",
+    "rules/rules.json",
+    "rules/unsafe.json",
+    "shared/unsafe-domains.json",
+    "shared/tracker-catalog.json",
+    "shared/tracking-params.json",
+    "test/tracker-test-set.json",
+    "package.json"
+  ];
+  const checker = path.join(root, "scripts/check-json.mjs");
+
+  function writeFixture(manifestVersion, packageVersion) {
+    for (const file of files) {
+      const filePath = path.join(dir, file);
+      fs.mkdirSync(path.dirname(filePath), { recursive: true });
+      fs.writeFileSync(filePath, "{}\n");
+    }
+    fs.writeFileSync(path.join(dir, "manifest.json"), `${JSON.stringify({ version: manifestVersion })}\n`);
+    fs.writeFileSync(path.join(dir, "package.json"), `${JSON.stringify({ version: packageVersion })}\n`);
+  }
+
+  writeFixture("0.2.0", "0.2.0");
+  const matching = run(checker, [dir]);
+  assert.equal(matching.status, 0, matching.output);
+  assert.match(matching.output, /JSON OK \(8 files\)/);
+
+  writeFixture("0.2.0", "0.2.1");
+  const mismatched = run(checker, [dir]);
+  assert.equal(mismatched.status, 1, mismatched.output);
+  assert.match(mismatched.output, /manifest\.json/);
+  assert.match(mismatched.output, /package\.json/);
+  assert.match(mismatched.output, /0\.2\.0/);
+  assert.match(mismatched.output, /0\.2\.1/);
+});
+
 test("content scan resolves relative resources against the document base URI", () => {
   const config = readJson("shared/tracker-catalog.json");
   const trackerDomain = config.trackers[0].domain;
@@ -533,4 +571,58 @@ test("community setting rejects page senders and malformed values and handles up
   await assert.rejects(vm.runInContext("setUnsafeDomainBlocking(true)", storageFailure.context),
     error => error.message === "Simulated storage failure");
   assert.equal(storageFailure.enabledRulesets.has("getblocked_unsafe_domains"), false);
+});
+
+function createReportWorker() {
+  const data = { getblockedDecoyMode: true };
+  const { context, message: send } = startBackground(data);
+  let writes = 0, now = 1000;
+  context.performance = { now: () => now };
+  const originalSet = context.chrome.storage.local.set;
+  context.chrome.storage.local.set = (items, callback) => {
+    writes++;
+    originalSet(items, callback);
+  };
+  return { data, send, writes: () => writes, advance(ms) { now += ms; },
+    settled: () => vm.runInContext("updateQueue", context) };
+}
+
+const frame = { id: "test-extension", tab: { id: 3 }, url: "https://page.example/", documentLifecycle: "active" };
+const popup = { id: "test-extension", url: `chrome-extension://test-extension/popup/popup.html` };
+const batch = { type: "GETBLOCKED_DECOYED_REQUESTS", count: 3, domains: ["api.segment.io"] };
+
+test("worker reserves settings and tab report access for the popup", async () => {
+  const worker = createReportWorker();
+  for (const [message, sender] of [
+    [{ type: "SET_GETBLOCKED_DECOY_MODE", enabled: true }, frame],
+    [{ type: "SET_GETBLOCKED_DECOY_MODE", enabled: "true" }, popup],
+    [{ type: "SET_GETBLOCKED_DECOY_MODE", enabled: true }, { ...popup, id: "another-extension" }],
+    [{ type: "GETBLOCKED_REPORT", tabId: 3 }, frame],
+    [{ type: "GETBLOCKED_REPORT", tabId: -1 }, popup]
+  ]) assert.equal((await worker.send(message, sender)).ok, false);
+  assert.equal(worker.writes(), 0);
+});
+
+test("worker only counts bounded catalog batches from active extension frames", async () => {
+  const worker = createReportWorker();
+  for (const [message, sender] of [
+    [batch, popup], [batch, { ...frame, documentLifecycle: "cached" }],
+    [batch, { ...frame, id: "foreign" }], [{ ...batch, domains: ["unknown.example"] }, frame],
+    [{ ...batch, count: 65 }, frame], [{ ...batch, count: 0 }, frame], [{ ...batch, count: "1" }, frame],
+    [{ ...batch, domains: [] }, frame]
+  ]) assert.equal((await worker.send(message, sender)).ok, false);
+  await worker.settled();
+  assert.equal(worker.writes(), 0);
+  await Promise.all(Array.from({ length: 6 }, () => worker.send(batch, frame)));
+  await worker.settled();
+  assert.equal(worker.data.getblockedTabStats[3].decoyedRequests, 12);
+  assert.equal(worker.writes(), 4);
+  worker.advance(1000);
+  await worker.send(batch, frame);
+  await worker.settled();
+  assert.equal(worker.data.getblockedTabStats[3].decoyedRequests, 15);
+  worker.data.getblockedDecoyMode = false;
+  await worker.send(batch, frame);
+  await worker.settled();
+  assert.equal(worker.writes(), 5);
 });

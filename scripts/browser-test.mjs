@@ -1031,7 +1031,7 @@ async function main() {
       check(
         "Decoy Mode: badge title identifies the decoyed request count",
         decoyActionTitle ===
-          `Decoyed requests on this page: ${decoyReport?.report?.page?.decoyedRequests || 0}`,
+          `Reported Decoy replacements on this page: ${decoyReport?.report?.page?.decoyedRequests || 0}`,
         `title=${JSON.stringify(decoyActionTitle)}, report=${JSON.stringify(decoyReport)}`
       );
 
