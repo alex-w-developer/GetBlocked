@@ -4,7 +4,7 @@ This guide explains how GetBlocked! is structured and how to work on it locally.
 
 ## Local Setup
 
-Install Node.js, then clone or open the project folder.
+For development, clone the repository with Git and use Node.js 22.4 or newer with npm. CI runs Node.js 22. Loading the unpacked extension only requires a supported browser and the project files.
 
 There are no runtime npm dependencies. The npm scripts use Node.js built-ins.
 
@@ -70,7 +70,7 @@ that runs in a compatible Chromium-based browser with the unpacked extension loa
 ### What it does
 
 1. Starts a minimal local HTTP server (Node `node:http`) on `localhost:8765` serving
-   the project directory.
+   the browser fixtures and package metadata used by the checks.
 2. Launches Chrome with `--load-extension=<project-root>` and
    `--remote-debugging-port=9333` so the Chrome DevTools Protocol (CDP) is accessible.
 3. Navigates to `test/manual-test.html` with tracking URL parameters:
@@ -93,9 +93,7 @@ that runs in a compatible Chromium-based browser with the unpacked extension loa
 
 ### No extra dependencies
 
-The harness uses only Node.js built-ins (`node:http`, `node:net`, `node:child_process`,
-`node:fs`, `node:crypto`, `node:os`). It speaks the WebSocket wire protocol directly
-without any npm package.
+The harness uses Node's built-in WebSocket client for the Chrome DevTools Protocol. Each command has a deadline, and a disconnected session rejects its outstanding commands. The fixture server listens on loopback. The disposable browser profile routes fixture hostnames to loopback and uses a direct connection.
 
 ### Environment variable overrides
 
@@ -159,7 +157,7 @@ The popup requests a local report from the background service worker. It shows:
 
 It does not show a privacy score.
 
-The normal-mode estimate comes from unique resource URLs on known tracker domains that `content-script.js` can observe in the page. It does not claim to be a Chrome-confirmed count of DNR rule matches or blocked network requests. The production extension intentionally avoids the debug-only DNR feedback permission required for exact match reporting. The action badge uses the same estimate and exposes an explicit title; in Decoy Mode it switches to the exact number of supported request payloads modified by the extension.
+The normal-mode estimate comes from unique resource URLs on known tracker domains that `content-script.js` can observe in the page. It does not claim to be a Chrome-confirmed count of DNR rule matches or blocked network requests. The production extension intentionally avoids the debug-only DNR feedback permission required for exact match reporting. The action badge uses the same estimate and exposes an explicit title; in Decoy Mode it shows the rate-limited count of replacements reported by the page-world wrappers.
 
 The popup also owns the **Decoy Mode (Experimental)** toggle. It controls all websites, not just the current tab. A permanent description explains that enabling it pauses tracker blocking everywhere; the enabled description and footer repeat that scope and the network privacy limits. It asks the service worker to update the static-rule state before the saved setting changes, then refreshes the report. The global preference is reapplied on browser startup and extension install/update.
 

@@ -7,7 +7,7 @@ browser store or require publishing credentials in the repository.
 ## Version policy
 
 Keep `manifest.json` and `package.json` on the same numeric `major.minor.patch`
-version. The current baseline is `0.2.0` in both files. There is no intentional
+version. The JSON check enforces three integer components in Chrome’s supported range of 0 through 65535, with no leading zeros and at least one nonzero component. There is no intentional
 version divergence: the manifest identifies the extension, while package metadata
 identifies the tooling for that same checkout. If a lockfile is introduced, update
 its package version too. Use `v<version>` for the corresponding Git tag.
