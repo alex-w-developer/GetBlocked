@@ -30,13 +30,13 @@ It is built as a small, inspectable Manifest V3 project for people who want a fr
 ### Extension Popup Overview
 
 <p align="center">
-  <img src="assets/popup-screenshot.png" alt="GetBlocked! popup showing normal blocking mode, page counts, and detected tracker categories" width="300">
+  <img src="assets/popup-screenshot.png" alt="Normal-mode popup showing Decoy Mode off, protection on for reader.example.test, and the optional community list off" width="356">
 </p>
 
 ### Normal and Decoy Modes
 
 <p align="center">
-  <img src="assets/usage-demo.gif" alt="GetBlocked! popup switching between normal blocking and experimental Decoy Mode" width="356">
+  <img src="assets/usage-demo.gif" alt="The popup switches from normal protection to Decoy Mode and scrolls to the page report and network privacy warning" width="356">
 </p>
 
 ## What GetBlocked! Can Block
