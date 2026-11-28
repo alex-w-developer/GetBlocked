@@ -184,8 +184,7 @@ test("browser target selection ignores unrelated and stale background workers", 
   assert.equal(await selectExtensionTarget([{ ...worker("getblocked"), type: "page" }], manifest, probe), null);
 });
 
-test("JSON checker identifies malformed and missing files and preserves valid output", (t) => {
-  const dir = tempDir(t);
+function writeJsonFixture(dir, manifestVersion = "0.2.0", packageVersion = "0.2.0") {
   const files = [
     "manifest.json",
     "rules/rules.json",
@@ -199,9 +198,15 @@ test("JSON checker identifies malformed and missing files and preserves valid ou
   for (const file of files) {
     const filePath = path.join(dir, file);
     fs.mkdirSync(path.dirname(filePath), { recursive: true });
-    fs.writeFileSync(filePath, "{}\n");
+    const version = file === "manifest.json" ? manifestVersion : packageVersion;
+    const value = ["manifest.json", "package.json"].includes(file) && version !== null ? { version } : {};
+    fs.writeFileSync(filePath, JSON.stringify(value));
   }
+}
 
+test("JSON checker identifies malformed and missing files and preserves valid output", (t) => {
+  const dir = tempDir(t);
+  writeJsonFixture(dir);
   const checker = path.join(root, "scripts/check-json.mjs");
   const valid = run(checker, [dir]);
   assert.equal(valid.status, 0, valid.output);
@@ -220,40 +225,27 @@ test("JSON checker identifies malformed and missing files and preserves valid ou
 
 test("JSON checker enforces matching manifest and package versions", (t) => {
   const dir = tempDir(t);
-  const files = [
-    "manifest.json",
-    "rules/rules.json",
-    "rules/unsafe.json",
-    "shared/unsafe-domains.json",
-    "shared/tracker-catalog.json",
-    "shared/tracking-params.json",
-    "test/tracker-test-set.json",
-    "package.json"
-  ];
   const checker = path.join(root, "scripts/check-json.mjs");
 
-  function writeFixture(manifestVersion, packageVersion) {
-    for (const file of files) {
-      const filePath = path.join(dir, file);
-      fs.mkdirSync(path.dirname(filePath), { recursive: true });
-      fs.writeFileSync(filePath, "{}\n");
-    }
-    fs.writeFileSync(path.join(dir, "manifest.json"), `${JSON.stringify({ version: manifestVersion })}\n`);
-    fs.writeFileSync(path.join(dir, "package.json"), `${JSON.stringify({ version: packageVersion })}\n`);
-  }
-
-  writeFixture("0.2.0", "0.2.0");
+  writeJsonFixture(dir, "0.2.0", "0.2.0");
   const matching = run(checker, [dir]);
   assert.equal(matching.status, 0, matching.output);
   assert.match(matching.output, /JSON OK \(8 files\)/);
 
-  writeFixture("0.2.0", "0.2.1");
+  writeJsonFixture(dir, "0.2.0", "0.2.1");
   const mismatched = run(checker, [dir]);
   assert.equal(mismatched.status, 1, mismatched.output);
   assert.match(mismatched.output, /manifest\.json/);
   assert.match(mismatched.output, /package\.json/);
   assert.match(mismatched.output, /0\.2\.0/);
   assert.match(mismatched.output, /0\.2\.1/);
+  for (const invalidVersion of [null, 2, "1", "0.0.0", "1.00.2", "1.2.65536"]) {
+    writeJsonFixture(dir, invalidVersion, invalidVersion);
+    const invalid = run(checker, [dir]);
+    assert.equal(invalid.status, 1);
+    assert.match(invalid.output, /Invalid version in manifest\.json/);
+    assert.match(invalid.output, /Invalid version in package\.json/);
+  }
 });
 
 test("content scan resolves relative resources against the document base URI", () => {
@@ -275,6 +267,7 @@ test("content scan resolves relative resources against the document base URI", (
       },
       window: {
         location: new URL(pageUrl),
+        addEventListener() {},
         getComputedStyle: () => ({ display: "block", visibility: "visible", opacity: "1" })
       },
       document: { baseURI, querySelectorAll: () => elements },
@@ -472,6 +465,49 @@ test("global Decoy preference reapplies catalog rules on startup and extension u
     assert.equal(normalRestart.disabledRules.size, 0);
     await vm.runInContext("setDecoyMode(true)", restarted.context);
   }
+});
+
+test("concurrent frames share one session profile and failed initialization can retry", async () => {
+  const { context, disabledRules } = startBackground();
+  const area = context.chrome.storage.session;
+  const save = area.set;
+  area.set = (_, callback) => {
+    context.chrome.runtime.lastError = { message: "Profile storage unavailable" };
+    callback();
+    delete context.chrome.runtime.lastError;
+  };
+  await assert.rejects(vm.runInContext("setDecoyMode(true)", context),
+    error => error.message === "Profile storage unavailable");
+  assert.equal(disabledRules.size, 0);
+  let writes = 0;
+  area.set = (...args) => { writes++; save(...args); };
+  const profiles = await vm.runInContext("Promise.all(Array.from({ length: 8 }, ensureDecoySessionProfile))", context);
+  assert.equal(new Set(profiles.map(profile => profile.userId)).size, 1);
+  assert.equal(writes, 1);
+});
+
+test("Decoy save failures restore enforcement and mode changes preserve page estimates", async () => {
+  const data = { getblockedTabStats: { 4: { estimatedTrackerRequests: 3 } } };
+  const { context, disabledRules } = startBackground(data);
+  const area = context.chrome.storage.local;
+  const save = area.set;
+  for (const previous of [false, true]) {
+    await vm.runInContext("setDecoyMode(" + previous + ")", context);
+    area.set = (_, callback) => {
+      context.chrome.runtime.lastError = { message: "Setting storage unavailable" };
+      callback();
+      delete context.chrome.runtime.lastError;
+    };
+    await assert.rejects(vm.runInContext("setDecoyMode(" + !previous + ")", context),
+      error => error.message === "Setting storage unavailable");
+    assert.equal(disabledRules.has(1), previous);
+    assert.equal(data.getblockedDecoyMode, previous);
+    const report = await vm.runInContext("getReport(4)", context);
+    assert.equal(report.page.blockedOnPage, previous ? 0 : 3);
+    area.set = save;
+  }
+  await vm.runInContext("setDecoyMode(false)", context);
+  assert.equal((await vm.runInContext("getReport(4)", context)).page.blockedOnPage, 3);
 });
 
 test("community list rejects malformed, duplicate and broad shared-service domains", () => {

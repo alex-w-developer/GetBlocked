@@ -167,6 +167,9 @@
     }
   }
 
-  // A one-shot document-idle scan avoids stale observers after extension reloads.
+  // A restored document keeps its scripts, while the navigation resets its tab report.
+  window.addEventListener("pageshow", (event) => {
+    if (event.persisted) scanPage();
+  });
   scanPage();
 })();
