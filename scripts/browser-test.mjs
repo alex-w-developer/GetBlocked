@@ -976,11 +976,20 @@ async function main() {
         const tabs = await chrome.tabs.query({});
         return tabs.find(tab => String(tab.url || '').startsWith('http://localhost:${TEST_PORT}/'))?.id;
       })()`);
-      await secondPageCdp.send("Runtime.evaluate", {
-        expression: 'document.querySelector("#exercise-decoy").click()'
-      });
-      await sleep(500);
-      const secondReport = await evaluateExtension(`getReport(${JSON.stringify(secondTabId)})`);
+      async function exerciseDecoy(pageSession, id) {
+        const click = await pageSession.send("Runtime.evaluate", {
+          expression: 'document.querySelector("#exercise-decoy").click()'
+        });
+        if (click.exceptionDetails) throw new Error("Unable to run Decoy fixture");
+        let report;
+        for (let attempt = 0; attempt < 50; attempt++) {
+          report = await evaluateExtension(`getReport(${JSON.stringify(id)})`);
+          if (report?.page.decoyedRequests > 0) break;
+          await sleep(100);
+        }
+        return report;
+      }
+      const secondReport = await exerciseDecoy(secondPageCdp, secondTabId);
       check("Decoy Mode: global preference applies to a different site",
         secondReport?.decoyMode === true && secondReport.page?.decoyedRequests > 0,
         JSON.stringify(secondReport));
@@ -1014,18 +1023,12 @@ async function main() {
         JSON.stringify(decoySearch.getAll("ref")) === JSON.stringify(["invite42", "chapter2"]) &&
         decoySearch.get("route") === "reader");
 
-      await pageCdp.send("Runtime.evaluate", {
-        expression: 'document.querySelector("#exercise-decoy").click()'
-      });
-      await sleep(500);
-      const decoyReport = await evaluateExtension(`
-        getReport(${JSON.stringify(tabId)}).then((report) => ({ ok: true, report }))
-      `);
+      const decoyReport = await exerciseDecoy(pageCdp, tabId);
       check(
         "Decoy Mode: modified requests counted without false blocks",
-        decoyReport?.report?.decoyMode === true &&
-          decoyReport?.report?.page?.decoyedRequests > 0 &&
-          decoyReport?.report?.page?.blockedOnPage === 0,
+        decoyReport?.decoyMode === true &&
+          decoyReport?.page?.decoyedRequests > 0 &&
+          decoyReport?.page?.blockedOnPage === 0,
         JSON.stringify(decoyReport)
       );
       const decoyBadgeText = await evaluateExtension(`
@@ -1037,13 +1040,13 @@ async function main() {
       check(
         "Decoy Mode: badge matches decoyed request count",
         decoyBadgeText ===
-          String(decoyReport?.report?.page?.decoyedRequests || ""),
+          String(decoyReport?.page?.decoyedRequests || ""),
         `badge=${JSON.stringify(decoyBadgeText)}, report=${JSON.stringify(decoyReport)}`
       );
       check(
         "Decoy Mode: badge title identifies the decoyed request count",
         decoyActionTitle ===
-          `Decoyed requests on this page: ${decoyReport?.report?.page?.decoyedRequests || 0}`,
+          `Reported Decoy replacements on this page: ${decoyReport?.page?.decoyedRequests || 0}`,
         `title=${JSON.stringify(decoyActionTitle)}, report=${JSON.stringify(decoyReport)}`
       );
 

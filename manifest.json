@@ -69,6 +69,7 @@
         "https://*/*"
       ],
       "js": [
+        "shared/decoy-reports.js",
         "decoy-bridge.js"
       ],
       "all_frames": true,
