@@ -27,42 +27,8 @@ const profile = {
   phone: "+12025550142"
 };
 
-assert.equal(
-  transform.isKnownTrackerUrl(
-    "https://api.segment.io/v1/track",
-    "https://example.com",
-    ["segment.io"]
-  ),
-  true
-);
-assert.equal(
-  transform.isKnownTrackerUrl(
-    "https://metrics.example/v1/track",
-    "https://example.com",
-    ["segment.io"]
-  ),
-  false
-);
-assert.equal(
-  transform.isThirdPartyTrackerUrl(
-    "https://api.segment.io/v1/track",
-    "https://example.com",
-    ["api.segment.io"]
-  ),
-  true
-);
-assert.equal(
-  transform.isThirdPartyTrackerUrl(
-    "https://api.posthog.com/v1/track",
-    "https://app.posthog.com/project/1",
-    ["posthog.com"]
-  ),
-  false
-);
-
 const queryResult = transform.replaceUrl(
-  "https://api.segment.io/v1/track?anonymous_id=real&cid=old&event=purchase",
-  "https://example.com",
+  new URL("https://api.segment.io/v1/track?anonymous_id=real&cid=old&event=purchase"),
   profile
 );
 const queryUrl = new URL(queryResult.value);
@@ -134,5 +100,52 @@ assert.equal(formResult.changed, true);
 assert.equal(formResult.value.get("email"), profile.email);
 assert.equal(formResult.value.get("attachment").name, "evidence.txt");
 assert.equal(formResult.value.get("attachment").type, "text/plain");
+
+// Exercise each wrapper with local native stubs so no network calls are made.
+const calls = [];
+class LocalXhr {
+  open(method, url) { this.url = url; }
+  setRequestHeader() {}
+  send() { calls.push(this.url); }
+}
+class LocalNavigator {
+  sendBeacon(url) { calls.push(url); return true; }
+}
+const frame = {
+  origin: "https://publisher.example",
+  addEventListener(type, listener) { this.connect = listener; },
+  removeEventListener() {}
+};
+const transportContext = vm.createContext({
+  window: frame, document: { baseURI: frame.origin }, URL, URLSearchParams,
+  Request, Headers, XMLHttpRequest: LocalXhr, Navigator: LocalNavigator,
+  fetch: async url => { calls.push(url); }
+});
+for (const file of ["shared/config.js", "shared/tracker-scope.js", "shared/decoy-transform.js", "decoy-interceptor.js"]) {
+  vm.runInContext(fs.readFileSync(path.join(rootDir, file), "utf8"), transportContext);
+}
+const port = { start() {}, postMessage() {} };
+frame.connect({ source: frame, data: { channel: "getblocked-decoy-bridge-v1", type: "connect" }, ports: [port] });
+port.onmessage({ data: { type: "configure", enabled: true, profile } });
+
+const relative = "collect?user_id=original";
+for (const [origin, base, input, expected] of [
+  ["https://publisher.example", "https://publisher.example/", relative, relative],
+  ["https://publisher.example", "https://api.segment.io/v1/", relative, "https://api.segment.io/v1/collect?user_id=user_consistent"],
+  ["https://app.segment.io", "https://api.segment.io/v1/", relative, relative],
+  ["null", "https://api.segment.io/v1/", relative, "https://api.segment.io/v1/collect?user_id=user_consistent"],
+  ["https://publisher.example", "https://api.segment.io/", "https://elsewhere.example/" + relative, "https://elsewhere.example/" + relative],
+  ["https://publisher.example", "https://other.example/", "https://api.segment.io/" + relative, "https://api.segment.io/collect?user_id=user_consistent"]
+]) {
+  calls.length = 0;
+  frame.origin = origin;
+  transportContext.document.baseURI = base;
+  await transportContext.fetch(input);
+  const xhr = new LocalXhr();
+  xhr.open("POST", input);
+  xhr.send();
+  new LocalNavigator().sendBeacon(input);
+  assert.deepEqual(calls, [expected, expected, expected], [origin, base, input].join(" "));
+}
 
 console.log("Decoy transformation checks OK");

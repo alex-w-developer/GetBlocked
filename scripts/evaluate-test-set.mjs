@@ -1,3 +1,5 @@
+import "../shared/config.js";
+import "../shared/tracker-scope.js";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -14,13 +16,8 @@ function hostnameFromUrl(rawUrl) {
 }
 
 function hostMatchesDomain(hostname, domain) {
-  return hostname === domain || hostname.endsWith(`.${domain}`);
-}
-
-function isThirdParty(requestUrl, topUrl) {
-  const requestHost = hostnameFromUrl(requestUrl);
-  const topHost = hostnameFromUrl(topUrl);
-  return requestHost !== topHost && !requestHost.endsWith(`.${topHost}`);
+  const host = globalThis.GetBlockedTrackerScope.catalogHostname(hostname);
+  return host === domain || host.endsWith("." + domain);
 }
 
 function regexMatches(regexFilter, rawUrl) {
@@ -42,7 +39,8 @@ function requestMatchesRule(request, topUrl, rule) {
     return false;
   }
 
-  if (condition.domainType === "thirdParty" && !isThirdParty(request.url, topUrl)) {
+  if (condition.domainType === "thirdParty" &&
+      !globalThis.GetBlockedTrackerScope.isThirdPartyTrackerHost(requestHost, hostnameFromUrl(topUrl))) {
     return false;
   }
 

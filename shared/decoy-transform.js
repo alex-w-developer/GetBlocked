@@ -97,20 +97,11 @@
     return { value: changed ? nextParams : params, changed };
   }
 
-  function replaceUrl(rawUrl, baseUrl, profile) {
-    try {
-      const url = new URL(rawUrl, baseUrl);
-      const result = replaceSearchParams(url.searchParams, profile);
-
-      if (!result.changed) {
-        return { value: rawUrl, changed: false, hostname: url.hostname };
-      }
-
-      url.search = result.value.toString();
-      return { value: url.href, changed: true, hostname: url.hostname };
-    } catch (error) {
-      return { value: rawUrl, changed: false, hostname: "" };
-    }
+  // The interceptor supplies a freshly resolved URL owned by this request.
+  function replaceUrl(url, profile) {
+    const result = replaceSearchParams(url.searchParams, profile);
+    if (result.changed) url.search = result.value.toString();
+    return { value: url.href, changed: result.changed };
   }
 
   function replaceText(text, profile, contentType = "") {
@@ -184,77 +175,7 @@
     return { value: body, changed: false };
   }
 
-  function isKnownTrackerHost(hostname, trackerDomains) {
-    const normalizedHost = String(hostname || "").toLowerCase();
-    return trackerDomains.some((domain) => {
-      return normalizedHost === domain || normalizedHost.endsWith(`.${domain}`);
-    });
-  }
-
-  function isKnownTrackerUrl(rawUrl, baseUrl, trackerDomains) {
-    try {
-      return isKnownTrackerHost(
-        new URL(rawUrl, baseUrl).hostname,
-        trackerDomains
-      );
-    } catch (error) {
-      return false;
-    }
-  }
-
-  function approximateSite(hostname) {
-    const normalizedHost = String(hostname || "").toLowerCase();
-    if (
-      !normalizedHost ||
-      normalizedHost === "localhost" ||
-      normalizedHost.includes(":") ||
-      /^\d{1,3}(?:\.\d{1,3}){3}$/.test(normalizedHost)
-    ) {
-      return normalizedHost;
-    }
-
-    const labels = normalizedHost.split(".").filter(Boolean);
-    return labels.length > 1 ? labels.slice(-2).join(".") : normalizedHost;
-  }
-
-  function isApproxThirdPartyHost(requestHostname, pageHostname) {
-    const requestHost = String(requestHostname || "").toLowerCase();
-    const pageHost = String(pageHostname || "").toLowerCase();
-
-    if (!requestHost) {
-      return false;
-    }
-    if (!pageHost) {
-      return true;
-    }
-    if (
-      requestHost === pageHost ||
-      requestHost.endsWith(`.${pageHost}`) ||
-      pageHost.endsWith(`.${requestHost}`)
-    ) {
-      return false;
-    }
-
-    return approximateSite(requestHost) !== approximateSite(pageHost);
-  }
-
-  function isThirdPartyTrackerUrl(rawUrl, baseUrl, trackerDomains) {
-    try {
-      const requestUrl = new URL(rawUrl, baseUrl);
-      const pageUrl = new URL(baseUrl);
-      return (
-        isKnownTrackerHost(requestUrl.hostname, trackerDomains) &&
-        isApproxThirdPartyHost(requestUrl.hostname, pageUrl.hostname)
-      );
-    } catch (error) {
-      return false;
-    }
-  }
-
   globalScope.GetBlockedDecoyTransform = Object.freeze({
-    isKnownTrackerHost,
-    isKnownTrackerUrl,
-    isThirdPartyTrackerUrl,
     replaceBody,
     replaceObject,
     replaceSearchParams,

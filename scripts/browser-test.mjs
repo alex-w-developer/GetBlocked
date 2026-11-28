@@ -28,6 +28,8 @@
  *   Required mode: pass --required to fail instead of skipping if unavailable.
  */
 
+import "../shared/config.js";
+import "../shared/tracker-scope.js";
 import fs from "node:fs";
 import http from "node:http";
 import net from "node:net";
@@ -698,6 +700,37 @@ async function main() {
         version: chrome.runtime.getManifest().version
       })`);
       log("Extension identity:", JSON.stringify(extensionIdentity));
+
+      // Ask the unpacked browser's rule engine about synthetic requests, without
+      // contacting catalog hosts. A wrong registrable site fails on one boundary.
+      const { trackers } = JSON.parse(fs.readFileSync(path.join(ROOT, "shared/tracker-catalog.json"), "utf8"));
+      const { isThirdPartyTrackerHost } = globalThis.GetBlockedTrackerScope;
+      const siteCases = trackers.flatMap(({ domain, site = domain }) => {
+        const suffix = site.slice(site.indexOf(".") + 1);
+        return [
+          [domain, site], [domain, "sibling." + site],
+          ["nested." + domain, "sibling." + site], [domain, "different-site." + suffix]
+        ];
+      });
+      siteCases.push(
+        ["api.segment.io.", "other.io"], ["api.segment.io.", "app.segment.io"],
+        ["api.segment.io.", "app.segment.io."], ["api.segment.io", "app.segment.io."],
+        ["api.segment.io..", "api.segment.io.."], ["api.segment.io..", "app.segment.io.."]
+      );
+      const expectedCases = siteCases.map(([target, frame]) => [target, frame, isThirdPartyTrackerHost(target, frame)]);
+      const mismatches = await evaluateExtension(`(async () => {
+        const mismatches = [];
+        for (const [requestHost, initiatorHost, expected] of ${JSON.stringify(expectedCases)}) {
+          const { matchedRules } = await chrome.declarativeNetRequest.testMatchOutcome({
+            url: "https://" + requestHost + "/pixel", initiator: "http://" + initiatorHost, type: "image"
+          });
+          const blocked = matchedRules.some(rule => rule.rulesetId === "getblocked_static_rules" && rule.ruleId === 1);
+          if (blocked !== expected) mismatches.push({ requestHost, initiatorHost, expected, blocked });
+        }
+        return mismatches;
+      })()`);
+      check("Catalog site boundaries agree with Chrome DNR for every tracker",
+        Array.isArray(mismatches) && mismatches.length === 0, JSON.stringify(mismatches));
 
       const popupUrl = `chrome-extension://${extensionId}/popup/popup.html`;
       const popupTargetResult = await browserCdp.send("Target.createTarget", {

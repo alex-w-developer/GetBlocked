@@ -7,15 +7,18 @@ const DISALLOWED_DOMAINS = new Set([
   "weeblysite.com", "wuaze.com", "youtube.com", "za.com"
 ]);
 
+export function isHostname(domain) {
+  return typeof domain === "string" && domain.length <= 253 &&
+    /^(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}$/.test(domain);
+}
+
 export function validateUnsafeDomains(source) {
   if (!Array.isArray(source?.domains)) {
     throw new Error("Unsafe-domain source must contain a domains array.");
   }
   const seen = new Set();
   for (const domain of source.domains) {
-    if (typeof domain !== "string" || domain.length > 253 ||
-        domain !== domain.trim().toLowerCase() ||
-        !/^(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}$/.test(domain)) {
+    if (!isHostname(domain)) {
       throw new Error(`Invalid unsafe domain: ${JSON.stringify(domain)}`);
     }
     if (DISALLOWED_DOMAINS.has(domain)) {
