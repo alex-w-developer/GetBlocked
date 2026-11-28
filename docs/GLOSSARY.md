@@ -38,23 +38,7 @@ The catalog is the source used to generate the extension's DNR rules and related
 
 A **third-party request** is a network request that is third-party relative to the web page or frame that initiated it.
 
-Third-party does **not** simply mean "a different hostname." Chrome determines first-party versus third-party using the relationship between the request and the originating frame's domain. Related subdomains can therefore still belong to the same first-party site.
-
-**Example:** If a page at:
-
-`https://shop.example/checkout.test`
-
-loads a resource from:
-
-`https://cdn.example/assets.test`
-
-the different subdomain does not automatically make that request third-party.
-
-By contrast, a request from the same page to:
-
-`https://tracker.test/pixel.example`
-
-can be third-party because it belongs to a different site.
+Chrome compares the registrable domains of the request and its initiating frame. A page at `https://shop.example.test/checkout` can load `https://cdn.example.test/assets` as a first-party resource because both hosts belong to `example.test`. A request from that page to `https://tracker.other.test/pixel` is third-party because its registrable domain is `other.test`.
 
 GetBlocked!'s normal blocking rules are deliberately scoped to known third-party tracker requests to reduce the risk of breaking normal site functionality.
 
