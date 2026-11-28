@@ -1135,7 +1135,23 @@ async function main() {
         await probeChildFrame(secondPageCdp, "child.localhost") === "site-fixture" &&
         Boolean(protectedFrameId) && protectedFrameId !== "site-fixture", JSON.stringify({ protectedFrameId }));
       await clickSetting("#decoy-mode-toggle");
+      // Cache a paused document in one tab and restore protection from the other.
+      await navigateSite(pageCdp, "localhost");
+      await readPage(pageCdp, "addEventListener('pageshow', event => { document.documentElement.dataset.persisted = String(event.persisted); })");
+      const cachedHistory = await pageCdp.send("Page.getNavigationHistory");
+      await pageCdp.send("Page.navigate", { url: "about:blank" });
       const restoredSwitch = await clickSetting("#site-protection-toggle");
+      await pageCdp.send("Page.navigateToHistoryEntry", { entryId: cachedHistory.entries[cachedHistory.currentIndex].id });
+      await sleep(500);
+      const persistedSite = await readPage(pageCdp, "document.documentElement.dataset.persisted");
+      const restoredSiteReport = await evaluateExtension(`getReport(${tabId})`);
+      const restoredProbe = await probe(pageCdp);
+      const restoredTitle = await evaluateExtension(`chrome.action.getTitle({ tabId: ${tabId} })`);
+      log("Site protection: history document restored from BFCache after rule change:", persistedSite === "true");
+      check("Site protection: request enforcement, report and badge agree after restoring history",
+        restoredSiteReport?.site?.enabled === true && !restoredSiteReport.page.sitePaused &&
+        restoredTitle === "Estimated tracker resources on this page: 0" && restoredProbe === null,
+        JSON.stringify({ persistedSite, restoredSiteReport, restoredTitle, restoredProbe }));
       const restoredQuery = await navigateSite(secondPageCdp, "localhost");
       check("Site protection: resuming restores cleanup and blocking",
         restoredSwitch?.checked === true && !restoredQuery.includes("utm_source") && await probe(secondPageCdp) === null);
