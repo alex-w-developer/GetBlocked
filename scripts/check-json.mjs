@@ -29,9 +29,20 @@ for (const file of files) {
 }
 
 if (!failed) {
-  const manifestVersion = parsed["manifest.json"].version;
-  const packageVersion = parsed["package.json"].version;
-  if (manifestVersion !== undefined && packageVersion !== undefined && manifestVersion !== packageVersion) {
+  const filesWithVersions = ["manifest.json", "package.json"];
+  for (const file of filesWithVersions) {
+    const version = parsed[file]?.version;
+    const parts = typeof version === "string" ? version.split(".") : [];
+    if (parts.length !== 3 || version === "0.0.0" ||
+        parts.some(part => !/^(0|[1-9][0-9]*)$/.test(part) || Number(part) > 65535)) {
+      console.error(`Invalid version in ${file}: ${JSON.stringify(version) ?? "missing"}`);
+      failed = true;
+    }
+  }
+
+  const manifestVersion = parsed["manifest.json"]?.version;
+  const packageVersion = parsed["package.json"]?.version;
+  if (manifestVersion !== packageVersion) {
     console.error(
       `Version mismatch: manifest.json has version "${manifestVersion}" but package.json has version "${packageVersion}"`
     );
