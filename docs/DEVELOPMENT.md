@@ -152,7 +152,7 @@ Rules stay limited to `domainType: "thirdParty"` to reduce website breakage.
 The popup requests a local report from the background service worker. It shows:
 
 - Estimated tracker resources on this page
-- Decoyed on this page
+- Reported Decoy replacements
 - Tracking links cleaned
 - Visible tracking attempts detected
 - Detected categories
@@ -180,7 +180,7 @@ Decoy Mode is off by default. Its saved preference uses `chrome.storage.local`; 
 Two document-start content-script declarations are used:
 
 1. `shared/config.js`, `shared/decoy-transform.js`, and `decoy-interceptor.js` run in the page's `MAIN` world. This is required to wrap the page's own `fetch`, `XMLHttpRequest`, and `navigator.sendBeacon` APIs.
-2. `decoy-bridge.js` runs in the default isolated world. It can use extension messaging and relays the saved setting, session profile, and decoy-count messages across a one-time `MessageChannel` port transferred before page scripts run. The main-world interceptor ignores later connection attempts, which prevents ordinary page code from spoofing configuration or count messages over a fixed public channel.
+2. `decoy-bridge.js` runs in the default isolated world. It passes the saved configuration and fake profile to the interceptor over a transferred `MessageChannel` port. The page world is untrusted. The isolated bridge validates and batches replacement reports, and the worker checks the sending tab, saved mode, catalog and per-tab budget before updating local statistics.
 
 Both declarations run in matching web frames. The interceptor checks every destination against the generated `TRACKER_DOMAINS` list before inspecting it. It never creates a request. See [Decoy Mode](DECOY_MODE.md) for supported fields, body formats, transaction safety, and privacy limits.
 

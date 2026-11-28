@@ -96,7 +96,7 @@ For example, if the page exposes two unique resource URLs belonging to known tra
 
 This count is intentionally limited by what GetBlocked! can observe locally and by the domains in its tracker catalog. It does not mean that every detected resource was successfully contacted, matched, or blocked.
 
-In Decoy Mode, the popup uses **Decoyed on this page** instead. That value counts supported request payloads that the extension actually modified. URL-cleaning activity is reported separately.
+In Decoy Mode, the popup uses **Reported Decoy replacements** instead. That estimate comes from page-world wrappers reporting a changed field. Pages can influence the count, and high-volume reports are limited. URL-cleaning activity is reported separately.
 
 ## Further reading
 
