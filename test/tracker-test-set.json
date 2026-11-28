@@ -3,6 +3,14 @@
   "description": "Local fixture for comparing the generated built-in ruleset against known tracker request examples by category.",
   "pages": [
     {
+      "name": "First-party catalog requests from a sibling or a child",
+      "topUrl": "https://app.posthog.com/",
+      "requests": [
+        { "url": "https://api.posthog.com/collect", "type": "xmlhttprequest", "tracker": false },
+        { "url": "https://posthog.com/script.js", "type": "script", "tracker": false }
+      ]
+    },
+    {
       "name": "Analytics fixture",
       "topUrl": "https://analytics-fixture.example.test/article",
       "requests": [

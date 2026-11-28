@@ -27,6 +27,7 @@ There are no runtime npm dependencies. The npm scripts use Node.js built-ins.
 - `shared/tracker-catalog.json`: maintained source of truth for tracker domains.
 - `shared/tracking-params.json`: maintained source of truth for tracking URL parameters.
 - `shared/config.js`: generated config for content script/category detection.
+- `shared/tracker-scope.js` compares catalog destinations with the initiating frame’s site for the scanner, Decoy Mode, and evidence fixtures.
 - `shared/decoy-transform.js`: reusable, locally tested request-field transformation helpers.
 - `rules/rules.json`: generated Chrome DNR rules.
 - `shared/unsafe-domains.json`: optional community domain list and source attribution.
@@ -180,7 +181,7 @@ Two document-start content-script declarations are used:
 1. `shared/config.js`, `shared/decoy-transform.js`, and `decoy-interceptor.js` run in the page's `MAIN` world. This is required to wrap the page's own `fetch`, `XMLHttpRequest`, and `navigator.sendBeacon` APIs.
 2. `decoy-bridge.js` runs in the default isolated world. It passes the saved configuration and fake profile to the interceptor over a transferred `MessageChannel` port. The page world is untrusted. The isolated bridge validates and batches replacement reports, and the worker checks the sending tab, saved mode, catalog and per-tab budget before updating local statistics.
 
-Both declarations run in matching web frames. The interceptor checks every destination against the generated `TRACKER_DOMAINS` list before inspecting it. It never creates a request. See [Decoy Mode](DECOY_MODE.md) for supported fields, body formats, transaction safety, and privacy limits.
+Both declarations run in matching web frames. The interceptor checks each destination and the initiating frame against the generated tracker site map before inspecting it. It never creates a request. See [Decoy Mode](DECOY_MODE.md) for supported fields, body formats, transaction safety, and privacy limits.
 
 ## MV3 And DNR Notes
 

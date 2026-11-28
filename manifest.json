@@ -55,6 +55,7 @@
       ],
       "js": [
         "shared/config.js",
+        "shared/tracker-scope.js",
         "shared/decoy-transform.js",
         "decoy-interceptor.js"
       ],
@@ -83,6 +84,7 @@
       ],
       "js": [
         "shared/config.js",
+        "shared/tracker-scope.js",
         "content-script.js"
       ],
       "run_at": "document_idle"

@@ -73,6 +73,39 @@ test("generator guards preserve existing outputs and reject broad domains", (t) 
   }
 });
 
+test("catalog site metadata must name an ancestor of a valid tracker hostname", (t) => {
+  for (const tracker of [
+    entry("a.example.test/collect"), entry("127.0.0.1"), entry("a.example.test", { site: "unrelated.test" }),
+    entry("a.example.test", { site: "test" }), entry("a.example.test", { site: null })
+  ]) {
+    const dir = generatorFixture(t, [tracker]);
+    const result = run(path.join(dir, "scripts/generate-rules.mjs"));
+    assert.equal(result.status, 1, result.output);
+    assert.match(result.output, /Invalid (tracker catalog entry|registrable site)/);
+    assert.equal(fs.existsSync(path.join(dir, "rules/rules.json")), false);
+  }
+});
+
+test("catalog site boundaries support multi-label public and private suffixes", (t) => {
+  const dir = generatorFixture(t, [
+    entry("api.vendor.co.uk", { site: "vendor.co.uk" }), entry("tracker.github.io")
+  ]);
+  assert.equal(run(path.join(dir, "scripts/generate-rules.mjs")).status, 0);
+  const context = vm.createContext({});
+  vm.runInContext(fs.readFileSync(path.join(dir, "shared/config.js"), "utf8"), context);
+  vm.runInContext(fs.readFileSync(path.join(root, "shared/tracker-scope.js"), "utf8"), context);
+  const { isThirdPartyTrackerHost } = context.GetBlockedTrackerScope;
+  for (const [target, frame, expected] of [
+    ["v2.api.vendor.co.uk", "shop.vendor.co.uk", false],
+    ["api.vendor.co.uk", "other.co.uk", true],
+    ["tracker.github.io", "other.github.io", true],
+    ["child.tracker.github.io", "tracker.github.io", false],
+    ["other.github.io", "unrelated.example", false]
+  ]) {
+    assert.equal(isThirdPartyTrackerHost(target, frame), expected);
+  }
+});
+
 test("evidence CLI rejects missed trackers and false positives, reporting every failure", (t) => {
   const dir = tempDir(t);
   const fixturePath = path.join(dir, "evidence.json");
@@ -267,6 +300,8 @@ test("content scan resolves relative resources against the document base URI", (
     });
     vm.runInContext(fs.readFileSync(path.join(root, "shared/config.js"), "utf8"), context);
 
+    vm.runInContext(fs.readFileSync(path.join(root, "shared/tracker-scope.js"), "utf8"), context);
+
     for (const element of elements) {
       element.getBoundingClientRect = () => ({ width: 10, height: 10 });
       element.matches = selector => selector === "script,link" ? false : selector.includes("img[src]");
@@ -305,6 +340,13 @@ test("content scan resolves relative resources against the document base URI", (
   });
   assert.equal(absolute.estimatedTrackerRequests, 1);
   assert.equal(absolute.trackerElementsDetected, 1);
+
+  const sameSite = scan({
+    pageUrl: "https://app.segment.io/page",
+    elements: [resource("https://api.segment.io/collect")]
+  });
+  assert.equal(sameSite.estimatedTrackerRequests, 0);
+  assert.equal(sameSite.trackerElementsDetected, 0);
 });
 
 test("overlap detection handles normalization, ancestors, siblings and suffix boundaries", () => {
