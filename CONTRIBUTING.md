@@ -55,7 +55,7 @@ Run the evidence fixture:
 npm run test:evidence
 ```
 
-Run the complete local check suite:
+Run the complete local check suite in a Git clone with Node.js 22.4 or newer. After intentionally regenerating files, review and stage the generated diff first so the check can compare it with the Git index.
 
 ```bash
 npm run check

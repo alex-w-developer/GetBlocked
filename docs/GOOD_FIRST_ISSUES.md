@@ -1,21 +1,7 @@
 # Good First Issues
 
 Start with the [live list of open good first issues](https://github.com/alex-w-developer/GetBlocked/issues?q=is%3Aissue+is%3Aopen+label%3A%22good+first+issue%22).
-GitHub issue status is authoritative; the tasks below may be claimed or completed
-later. Check status and comments before starting.
-
-## Small tasks to choose from
-
-| Issue | Contribution | Starting files |
-| --- | --- | --- |
-| [#32](https://github.com/alex-w-developer/GetBlocked/issues/32) | Connect switch help text and announce popup status updates | `popup/popup.html`, `popup/popup.js` |
-| [#38](https://github.com/alex-w-developer/GetBlocked/issues/38) | Explain extension and tracking terms in a short glossary | `README.md`, `docs/DEVELOPMENT.md`, new `docs/GLOSSARY.md` |
-| [#39](https://github.com/alex-w-developer/GetBlocked/issues/39) | Show static Decoy Mode before/after examples | `docs/DECOY_MODE.md`, `shared/decoy-transform.js` |
-
-Each issue includes a reason, acceptance criteria, verification steps, and scope
-boundaries. These are deliberately small changes; no new permissions or runtime
-dependencies are needed. Larger privacy, bridge, and site-scope tasks remain in
-the general backlog and are not labeled as first contributions.
+Read the issue, its linked pull requests, and recent comments to see what is still available. If the list is empty, use the contributor guides below to propose a focused change.
 
 ## How to start
 
@@ -35,12 +21,3 @@ Identify a specific narrow endpoint and supporting evidence before opening an
 issue; category-only requests and domains already covered by a parent do not make
 useful starter tasks. Ambiguous URL parameters such as `ref` are preserved to avoid
 breaking application links.
-
-## Completed work
-
-Screenshots, broken-site examples, generated-file sync validation, standard icons,
-catalog overlap checks, document-base URL resolution, and JSON error filenames
-have already been delivered. Reduced-motion support and duplicate/broad-domain
-generator regression tests are also complete (#40 and #41). Do not recreate these
-tasks from older idea lists.
-Use the live issue search before proposing new work.

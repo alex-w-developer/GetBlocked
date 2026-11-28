@@ -32,12 +32,11 @@ import "../shared/config.js";
 import "../shared/tracker-scope.js";
 import fs from "node:fs";
 import http from "node:http";
-import net from "node:net";
 import path from "node:path";
 import { spawn } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import os from "node:os";
-import crypto from "node:crypto";
+import { openCdpSession } from "./browser-cdp.mjs";
 import { selectExtensionTarget } from "./browser-targets.mjs";
 
 // ---------------------------------------------------------------------------
@@ -146,7 +145,13 @@ function startFileServer(root, port) {
   };
 
   const server = http.createServer((req, res) => {
-    const requestUrl = new URL(req.url, `http://127.0.0.1:${port}`);
+    let requestUrl;
+    try {
+      requestUrl = new URL(req.url, `http://127.0.0.1:${port}`);
+    } catch {
+      res.writeHead(400).end();
+      return;
+    }
     const urlPath = requestUrl.pathname;
     if (urlPath === "/test/site-page") {
       res.writeHead(200, { "Content-Type": "text/html" });
@@ -170,27 +175,16 @@ function startFileServer(root, port) {
       res.end(JSON.stringify({ cid: requestUrl.searchParams.get("cid") }));
       return;
     }
-    const filePath = path.join(root, urlPath);
-    const rootWithSep = root.endsWith(path.sep) ? root : root + path.sep;
-    if (!filePath.startsWith(rootWithSep) && filePath !== root) {
-      res.writeHead(403);
-      res.end("Forbidden");
+    if (!["/package.json", TEST_PATH, "/test/manual-requests.js", "/test/history.html"].includes(urlPath)) {
+      res.writeHead(404).end();
       return;
     }
-    let targetPath = filePath;
-    if (fs.existsSync(targetPath) && fs.statSync(targetPath).isDirectory()) {
-      targetPath = path.join(targetPath, "index.html");
-    }
-    if (!fs.existsSync(targetPath)) {
-      res.writeHead(404);
-      res.end("Not found");
-      return;
-    }
+    const targetPath = path.join(root, urlPath);
     const ext = path.extname(targetPath).toLowerCase();
     res.writeHead(200, {
       "Content-Type": MIME[ext] || "application/octet-stream",
     });
-    fs.createReadStream(targetPath).pipe(res);
+    fs.createReadStream(targetPath).on("error", () => res.destroy()).pipe(res);
   });
 
   return new Promise((resolve, reject) => {
@@ -229,218 +223,8 @@ async function cdpHttpGet(debugPort, endpoint, retries = 15) {
   throw new Error(`CDP HTTP GET ${endpoint} failed after ${retries} retries`);
 }
 
-/**
- * Opens a CDP WebSocket session using a raw Node.js net.Socket.
- *
- * Per the WebSocket RFC 6455, client frames MUST be masked. Chrome enforces
- * this and also requires --remote-allow-origins=* (or a matching origin) to
- * accept connections from non-browser clients.
- *
- * Returns { send(method, params) → Promise<result>, on(event, fn), close() }
- */
-function openCdpSession(wsUrl) {
-  // Normalise hostname: Chrome lists "localhost" but binds to 127.0.0.1
-  const normUrl = wsUrl.replace(/^ws:\/\/localhost/, "ws://127.0.0.1");
-  const url = new URL(normUrl);
-  const wsKey = crypto.randomBytes(16).toString("base64");
-
-  return new Promise((resolve, reject) => {
-    const socket = net.createConnection(
-      { host: "127.0.0.1", port: Number(url.port) || 9222 },
-      () => {
-        // No Origin header needed when Chrome is launched with --remote-allow-origins=*
-        socket.write(
-          [
-            `GET ${url.pathname} HTTP/1.1`,
-            `Host: 127.0.0.1:${url.port}`,
-            "Upgrade: websocket",
-            "Connection: Upgrade",
-            `Sec-WebSocket-Key: ${wsKey}`,
-            "Sec-WebSocket-Version: 13",
-            "",
-            "",
-          ].join("\r\n")
-        );
-      }
-    );
-    socket.once("error", reject);
-
-    let handshakeDone = false;
-    let buf = Buffer.alloc(0);
-    let idCounter = 1;
-    const pending = new Map();
-    const eventHandlers = new Map();
-
-    /**
-     * Sends a WebSocket text frame with proper RFC 6455 client-side masking.
-     * The mask bit MUST be set for client→server frames.
-     */
-    function sendWsFrame(text) {
-      const payload = Buffer.from(text, "utf8");
-      const mask = crypto.randomBytes(4);
-      const masked = Buffer.allocUnsafe(payload.length);
-      for (let i = 0; i < payload.length; i++) {
-        masked[i] = payload[i] ^ mask[i % 4];
-      }
-      const len = payload.length;
-      let header;
-      if (len < 126) {
-        // FIN=1, opcode=1 (text), MASK=1
-        header = Buffer.from([0x81, 0x80 | len]);
-      } else if (len < 65536) {
-        header = Buffer.allocUnsafe(4);
-        header[0] = 0x81;
-        header[1] = 0x80 | 126;
-        header.writeUInt16BE(len, 2);
-      } else {
-        header = Buffer.allocUnsafe(10);
-        header[0] = 0x81;
-        header[1] = 0x80 | 127;
-        header.writeBigUInt64BE(BigInt(len), 2);
-      }
-      socket.write(Buffer.concat([header, mask, masked]));
-    }
-
-    /**
-     * Parses complete WebSocket frames from a Buffer.
-     * Server→client frames are NOT masked (mask bit = 0).
-     * Returns { frames: [{opcode, payload}], remaining: Buffer }
-     */
-    function parseFrames(inBuf) {
-      const frames = [];
-      let offset = 0;
-      while (offset + 2 <= inBuf.length) {
-        const b0 = inBuf[offset];
-        const b1 = inBuf[offset + 1];
-        const opcode = b0 & 0x0f;
-        const masked = (b1 & 0x80) !== 0;
-        let payloadLen = b1 & 0x7f;
-        let headerLen = 2;
-        if (payloadLen === 126) {
-          if (inBuf.length - offset < 4) break;
-          payloadLen = inBuf.readUInt16BE(offset + 2);
-          headerLen = 4;
-        } else if (payloadLen === 127) {
-          if (inBuf.length - offset < 10) break;
-          payloadLen = Number(inBuf.readBigUInt64BE(offset + 2));
-          headerLen = 10;
-        }
-        const maskLen = masked ? 4 : 0;
-        const frameEnd = offset + headerLen + maskLen + payloadLen;
-        if (inBuf.length < frameEnd) break;
-        let payload = inBuf.slice(offset + headerLen + maskLen, frameEnd);
-        if (masked) {
-          const maskBytes = inBuf.slice(
-            offset + headerLen,
-            offset + headerLen + 4
-          );
-          payload = Buffer.from(payload.map((b, i) => b ^ maskBytes[i % 4]));
-        }
-        frames.push({ opcode, payload });
-        offset = frameEnd;
-      }
-      return { frames, remaining: inBuf.slice(offset) };
-    }
-
-    function dispatchFrames(frames) {
-      for (const { opcode, payload } of frames) {
-        if (opcode === 8) {
-          // Close frame — Chrome is shutting down the connection
-          socket.destroy();
-          return;
-        }
-        if (opcode !== 1 && opcode !== 2) continue; // skip ping/pong/continuation
-        let msg;
-        try { msg = JSON.parse(payload.toString("utf8")); }
-        catch { continue; }
-
-        if (msg.id !== undefined && pending.has(msg.id)) {
-          const { resolve: res, reject: rej } = pending.get(msg.id);
-          pending.delete(msg.id);
-          if (msg.error) {
-            rej(new Error(msg.error.message || JSON.stringify(msg.error)));
-          } else {
-            res(msg.result);
-          }
-        } else if (msg.method) {
-          for (const h of (eventHandlers.get(msg.method) || [])) {
-            h(msg.params);
-          }
-        }
-      }
-    }
-
-    socket.on("data", (chunk) => {
-      buf = Buffer.concat([buf, chunk]);
-      if (!handshakeDone) {
-        const idx = buf.indexOf("\r\n\r\n");
-        if (idx === -1) return;
-        const headers = buf.slice(0, idx).toString();
-        if (!headers.includes("101")) {
-          reject(new Error(`WS handshake failed:\n${headers.slice(0, 400)}`));
-          socket.destroy();
-          return;
-        }
-        handshakeDone = true;
-        buf = buf.slice(idx + 4);
-        resolve({
-          send(method, params = {}) {
-            return new Promise((res, rej) => {
-              const id = idCounter++;
-              pending.set(id, { resolve: res, reject: rej });
-              sendWsFrame(JSON.stringify({ id, method, params }));
-            });
-          },
-          on(event, handler) {
-            if (!eventHandlers.has(event)) eventHandlers.set(event, []);
-            eventHandlers.get(event).push(handler);
-          },
-          close() { socket.destroy(); },
-        });
-        // Process any frames that arrived with the handshake response
-      }
-      const { frames, remaining } = parseFrames(buf);
-      buf = remaining;
-      dispatchFrames(frames);
-    });
-
-    socket.once("close", () => {
-      for (const { reject: rej } of pending.values()) {
-        rej(new Error("CDP socket closed unexpectedly"));
-      }
-      pending.clear();
-    });
-  });
-}
-
-// ---------------------------------------------------------------------------
-// Utilities
-// ---------------------------------------------------------------------------
-
 function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
-}
-
-/** Polls until TCP port is open or timeoutMs elapses. */
-function waitForPort(port, timeoutMs = 20000) {
-  const start = Date.now();
-  return new Promise((resolve, reject) => {
-    function attempt() {
-      const s = net.createConnection({ host: "127.0.0.1", port }, () => {
-        s.destroy();
-        resolve();
-      });
-      s.on("error", () => {
-        s.destroy();
-        if (Date.now() - start > timeoutMs) {
-          reject(new Error(`Timed out waiting for port ${port}`));
-        } else {
-          setTimeout(attempt, 300);
-        }
-      });
-    }
-    attempt();
-  });
 }
 
 // ---------------------------------------------------------------------------
@@ -506,16 +290,13 @@ async function main() {
       `--disable-extensions-except=${ROOT}`,
       `--user-data-dir=${tempDir}`,
       `--remote-debugging-port=${DEBUG_PORT}`,
-      // Allow CDP WebSocket connections from non-browser clients.
-      // This is safe because the port is ephemeral and bound to 127.0.0.1 only.
-      "--remote-allow-origins=*",
+      "--remote-debugging-address=127.0.0.1",
       "--no-first-run",
       "--no-default-browser-check",
       "--disable-sync",
       "--disable-client-side-phishing-detection",
       "--disable-default-apps",
       "--disable-popup-blocking",
-      "--allow-running-insecure-content",
       "--headless=new",
       // All fixture names resolve locally even when blocking is turned off.
       "--host-resolver-rules=MAP * 127.0.0.1",
@@ -534,7 +315,7 @@ async function main() {
     chromeProcess.stderr.on("data", (data) => {
       const line = data.toString();
       chromeStderr = (chromeStderr + line).slice(-4000);
-      const m = line.match(/DevTools listening on (ws:\/\/\S+)/);
+      const m = chromeStderr.match(/DevTools listening on (ws:\/\/\S+)/);
       if (m) browserWsUrl = m[1];
     });
 
@@ -544,24 +325,14 @@ async function main() {
     let launchError = null;
     chromeProcess.on("error", (err) => { launchError = err; });
 
-    // Wait for CDP debug port to open
-    log(`Waiting for CDP on port ${DEBUG_PORT} ...`);
-    try {
-      await waitForPort(DEBUG_PORT, 20000);
-    } catch (err) {
-      console.error(PREFIX, "Chrome startup diagnostics:", chromeStderr || "(no stderr)");
-      throw launchError || err;
+    // Only the process we spawned can announce this browser's endpoint.
+    const launchDeadline = Date.now() + 20000;
+    while (!browserWsUrl && Date.now() < launchDeadline && chromeProcess.exitCode === null && !launchError) {
+      await sleep(100);
     }
-    // Give the extension service worker time to initialise
-    await sleep(2000);
-
-    // ------------------------------------------------------------------
-    // 4. Connect to the browser-level CDP target
-    // ------------------------------------------------------------------
     if (!browserWsUrl) {
-      // Fallback: read from /json/version (Chrome also exposes this)
-      const versionInfo = await cdpHttpGet(DEBUG_PORT, "/json/version");
-      browserWsUrl = versionInfo.webSocketDebuggerUrl;
+      console.error(PREFIX, "Chrome startup diagnostics:", chromeStderr || "(no stderr)");
+      throw launchError || new Error("Could not connect to CDP on the launched browser");
     }
     log("Browser WS:", browserWsUrl);
 
@@ -636,9 +407,8 @@ async function main() {
     const finalUrl = urlResult?.result?.value || "";
     log("Final page URL:", finalUrl);
 
-    const loadedTargets = await cdpHttpGet(DEBUG_PORT, "/json/list");
     const manifest = JSON.parse(fs.readFileSync(path.join(ROOT, "manifest.json"), "utf8"));
-    const swTarget = await selectExtensionTarget(loadedTargets, manifest, async (target) => {
+    async function probeWorker(target) {
       const session = await openCdpSession(target.webSocketDebuggerUrl);
       try {
         const result = await session.send("Runtime.evaluate", {
@@ -648,11 +418,18 @@ async function main() {
           returnByValue: true,
         });
         log("Worker identity:", JSON.stringify(result?.result?.value));
-        return result?.result?.value;
+        if (result.exceptionDetails) throw new Error(result.exceptionDetails.exception?.description || result.exceptionDetails.text);
+        return result.result.value;
       } finally {
         session.close();
       }
-    });
+    }
+    const workerDeadline = Date.now() + 8000;
+    let swTarget;
+    do {
+      swTarget = await selectExtensionTarget(await cdpHttpGet(DEBUG_PORT, "/json/list"), manifest, probeWorker);
+      if (!swTarget) await sleep(200);
+    } while (!swTarget && Date.now() < workerDeadline);
     if (!swTarget) {
       console.error("Browser stderr:", chromeStderr);
       throw new Error("Unpacked extension was not loaded by this browser");
@@ -691,7 +468,8 @@ async function main() {
           returnByValue: true,
           timeout: 6000,
         });
-        return result?.result?.value;
+        if (result.exceptionDetails) throw new Error(result.exceptionDetails.exception?.description || result.exceptionDetails.text);
+        return result.result.value;
       }
 
       const extensionIdentity = await evaluateExtension(`({
@@ -759,7 +537,8 @@ async function main() {
           returnByValue: true,
           timeout: 6000,
         });
-        return result?.result?.value;
+        if (result.exceptionDetails) throw new Error(result.exceptionDetails.exception?.description || result.exceptionDetails.text);
+        return result.result.value;
       }
 
       const switchStyle = `(() => {
@@ -838,6 +617,8 @@ async function main() {
           return { loaded: response.ok, name: (await response.json()).name };
         } catch { return { loaded: false }; }
       })()`);
+      const privatePathStatus = await evaluatePopup(`fetch("http://127.0.0.1:${TEST_PORT}/.git/config").then(response => response.status)`);
+      check("Fixture server serves only explicit test files", privatePathStatus === 404);
       const allowedCommunity = await localFetch(communityUrl);
       check("Community list: disabled rules allow the locally mapped host",
         allowedCommunity?.loaded === true && allowedCommunity.name === 'getblocked', JSON.stringify(allowedCommunity));
@@ -1257,21 +1038,10 @@ async function main() {
     // ------------------------------------------------------------------
     // 8. Assert: no unexpected runtime exceptions in the page
     // ------------------------------------------------------------------
-    // Benign errors caused by the test page intentionally loading tracker
-    // scripts and pixels that are blocked by the extension's DNR rules.
-    const realErrors = runtimeExceptions.filter((e) => {
-      if (e.includes("Failed to fetch")) return false;
-      if (e.includes("NetworkError")) return false;
-      if (e.includes("net::ERR_")) return false;
-      if (e.includes("ERR_BLOCKED_BY_CLIENT")) return false;
-      if (e.includes("fbq is not defined")) return false;
-      return true;
-    });
-
     check(
       "No unexpected runtime exceptions",
-      realErrors.length === 0,
-      realErrors.length > 0 ? realErrors.slice(0, 3).join(" | ") : ""
+      runtimeExceptions.length === 0,
+      runtimeExceptions.slice(0, 3).join(" | ")
     );
 
   } catch (err) {

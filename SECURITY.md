@@ -4,7 +4,7 @@ GetBlocked! is a privacy-focused browser extension. Security and privacy reports
 
 ## Reporting Security Or Privacy Issues
 
-Please report security or privacy issues privately when possible. If GitHub Security Advisories are enabled for the repository, use that flow. Otherwise, contact the maintainer privately or open a minimal public issue that does not include sensitive exploit details.
+Use GitHub to send security or privacy findings privately to the maintainers. Include sanitized examples and the affected extension version. [Report a vulnerability](https://github.com/alex-w-developer/GetBlocked/security/advisories/new)
 
 Helpful report details include:
 
