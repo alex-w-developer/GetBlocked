@@ -103,6 +103,7 @@ function renderReport(report) {
   }
 
   decoyModeToggleEl.checked = decoyMode === true;
+  decoyModeToggleEl.disabled = false;
   renderUnsafeDomainSetting(report.unsafeDomainBlocking === true);
   unsafeDomainsToggleEl.disabled = false;
   footerEl.classList.toggle("is-warning", decoyMode === true);
@@ -162,14 +163,17 @@ async function handleUnsafeDomainsChange() {
 async function loadReport() {
   try {
     const tab = await queryActiveTab();
-    if (!tab?.id) {
+    if (!Number.isInteger(tab?.id)) {
       throw new Error("No active page found");
     }
 
     const report = await requestReport(tab.id);
     renderReport(report);
   } catch (error) {
-    statusLineEl.textContent = "Open a web page to see a local report.";
+    modeSummaryEl.textContent = "Protection settings unavailable.";
+    statusLineEl.textContent = "Could not load the local report. Reopen the popup to try again.";
+    decoyModeToggleEl.disabled = true;
+    decoyModeDescriptionEl.textContent = "Decoy Mode setting unavailable.";
     unsafeDomainsToggleEl.disabled = true;
     unsafeDomainsDescriptionEl.textContent = "List setting unavailable. Reopen the popup to try again.";
   }
@@ -183,10 +187,10 @@ async function handleDecoyModeChange() {
     await setDecoyMode(enabled);
     await loadReport();
   } catch (error) {
-    decoyModeToggleEl.checked = !enabled;
-    statusLineEl.textContent = "Decoy Mode could not be updated. Try again.";
-  } finally {
-    decoyModeToggleEl.disabled = false;
+    await loadReport();
+    if (!decoyModeToggleEl.disabled) {
+      statusLineEl.textContent = "Decoy Mode could not be updated. Try again.";
+    }
   }
 }
 

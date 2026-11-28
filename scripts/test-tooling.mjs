@@ -313,6 +313,50 @@ test("catalog audit retains only explained overlaps and their category mappings"
     assert.deepEqual(actual, expected);
   }
 });
+test("Decoy switch waits for a saved setting and stays unavailable on report failure", async () => {
+  const markup = fs.readFileSync(path.join(root, "popup/popup.html"), "utf8");
+  const source = fs.readFileSync(path.join(root, "popup/popup.js"), "utf8");
+  assert.match(markup, /<input id="decoy-mode-toggle"[^>]+\bdisabled\b/);
+  assert.match(markup, /id="decoy-mode-description">\s*Loading/);
+  const elements = new Map();
+  function select(selector) {
+    if (!elements.has(selector)) {
+      elements.set(selector, {
+        disabled: true, checked: false, classList: { toggle() {} }, addEventListener() {},
+        replaceChildren(first) { this.firstElementChild = first; }
+      });
+    }
+    return elements.get(selector);
+  }
+  let load;
+  let reply;
+  const document = {
+    querySelector: select, createElement: () => ({}),
+    addEventListener: (_, callback) => { load = callback; }
+  };
+  const chrome = {
+    tabs: { query: (_, callback) => callback([{ id: 0 }]) },
+    runtime: { sendMessage: (_, callback) => { reply = callback; } }
+  };
+  vm.runInNewContext(source, { document, chrome });
+  const toggle = select("#decoy-mode-toggle");
+  const loading = load();
+  await Promise.resolve();
+  assert.equal(toggle.disabled, true);
+  reply({ ok: false });
+  await loading;
+  assert.equal(toggle.disabled, true);
+  assert.match(select("#decoy-mode-description").textContent, /unavailable/);
+
+  const retry = load();
+  await Promise.resolve();
+  reply({ ok: true, report: { page: {}, decoyMode: true } });
+  await retry;
+  assert.equal(toggle.disabled, false);
+  assert.equal(toggle.checked, true);
+  assert.match(select("#decoy-mode-description").textContent, /all websites/);
+});
+
 function startBackground(localData = {}) {
     const listeners = {};
     const event = name => ({ addListener: listener => { listeners[name] = listener; } });
